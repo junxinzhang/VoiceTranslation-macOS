@@ -4,7 +4,7 @@
 
 ## 苹果认证状态
 
-**v1.0.0 尚未使用 Apple Developer ID 签名，也未通过 Apple 公证。** 安装包使用临时签名，不是 App Store 版本，不能宣称已通过苹果的恶意软件检查。macOS 可能阻止首次启动；构建通过和文件校验一致均不能替代苹果认证。
+**v1.0.1 尚未使用 Apple Developer ID 签名，也未通过 Apple 公证。** 安装包使用临时签名，不是 App Store 版本，不能宣称已通过苹果的恶意软件检查。macOS 可能阻止首次启动；构建通过和文件校验一致均不能替代苹果认证。
 
 如果不愿使用尚未公证的安装包，请先不要安装，可审阅源码后自行构建，或等待完成认证的后续版本。是否继续安装应由你自己决定。
 
@@ -59,7 +59,7 @@ Apple 的[官方说明](https://support.apple.com/zh-cn/102445)介绍了不同�
 
 ### Distribution status
 
-**v1.0.0 is NOT signed with an Apple Developer ID and is NOT notarized by Apple.** It uses ad-hoc signing and is not an App Store release. macOS may block first launch. Build success and matching checksums are not Apple security approval. If you do not accept this, do not install the binaries; review/build the source or wait for a notarized version.
+**v1.0.1 is NOT signed with an Apple Developer ID and is NOT notarized by Apple.** It uses ad-hoc signing and is not an App Store release. macOS may block first launch. Build success and matching checksums are not Apple security approval. If you do not accept this, do not install the binaries; review/build the source or wait for a notarized version.
 
 ### Download and install
 

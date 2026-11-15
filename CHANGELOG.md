@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0.1 — 2026-11-15
+
+Security update. System-audio errors no longer switch to the microphone. Deleted history is removed from whole-conversation and resume copies; stale replies, checkpoints and suggestions cannot restore it. Legacy sandbox credential fields are removed only after confirmed Keychain storage, while unrelated settings and an unmigrated sole key are preserved.
+
+安全修复：系统音频失败不再自行打开麦克风；删除内容同步清理保存与恢复副本，防止迟到回复、旧保存请求和建议重新显示；密钥安全迁移后清理旧配置中的副本，保留无关设置，失败时明确提示。
+
+See [release notes](docs/releases/v1.0.1.md) and [validation scope](docs/VALIDATION.md).
+
 ## v1.0.0 — 2026-11-15
 
 First downloadable macOS release. Universal DMG and app ZIP packages include checksums. These binaries use ad-hoc signing, not an Apple Developer ID, and have NOT been notarized by Apple.

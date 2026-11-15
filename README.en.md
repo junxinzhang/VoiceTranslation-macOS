@@ -4,7 +4,7 @@ Live transcription and English–Chinese translation for macOS, using microphone
 
 [中文](README.md) · [Validation notes](docs/VALIDATION.md) · [Privacy](PRIVACY.md) · [Contributing](CONTRIBUTING.md) · [MIT License](LICENSE)
 
-> **The v1.0.0 binaries have NOT been signed with an Apple Developer ID or notarized by Apple.** macOS may block first launch. Read the [installation and safety notes](docs/guides/INSTALLATION.md#english) before downloading. Translation requires your own service credentials and any applicable provider charges.
+> **The v1.0.1 binaries have NOT been signed with an Apple Developer ID or notarized by Apple.** macOS may block first launch. Read the [installation and safety notes](docs/guides/INSTALLATION.md#english) before downloading. Translation requires your own service credentials and any applicable provider charges.
 
 **[Download DMG](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest/download/VoiceTranslation.dmg)** · [ZIP alternative](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest/download/VoiceTranslation.app.zip) · [Release notes and checksums](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest)
 
