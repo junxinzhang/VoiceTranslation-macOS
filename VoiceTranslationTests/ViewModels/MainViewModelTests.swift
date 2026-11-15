@@ -1991,3 +1991,318 @@ final class MicrophonePermissionFlowTests: XCTestCase {
         XCTAssertFalse(speech.isWaitingForMicrophonePermission)
     }
 }
+
+@MainActor
+final class PrivacySecurityRegressionTests: XCTestCase {
+    private var directory: URL!
+    private var prefs: UserDefaults!
+    private var suite: String!
+    override func setUpWithError() throws {
+        directory = FileManager.default.temporaryDirectory.appendingPathComponent("voice-privacy-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        suite = "VoiceTranslation.PrivacyTests.\(UUID())"
+        prefs = UserDefaults(suiteName: suite)!
+    }
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directory)
+        prefs.removePersistentDomain(forName: suite)
+    }
+    private func saved() -> SavedConversation {
+        var line = TranslationSession(originalText: "Private synthetic source.", direction: .englishToChinese)
+        line.isCompleted = true
+        line.translatedText = "虚构私密译文。"
+        return SavedConversation(id: UUID(), startedAt: Date(), updatedAt: Date(), lines: [line], draft: "", draftDirection: .englishToChinese)
+    }
+    private func record(_ line: TranslationSession) -> TranslationRecord {
+        TranslationRecord(originalText: line.originalText, translatedText: line.translatedText,
+                          direction: line.direction, timestamp: line.createdAt, id: line.id)
+    }
+    private func makeModel(_ history: HistoryManager) -> MainViewModel {
+        let settings = MockAppSettings()
+        settings.keepHistory = true
+        return MainViewModel(speechRecognizer: MockSpeechRecognizer(), translationService: MockTranslationService(),
+                             historyManager: history, appSettings: settings)
+    }
+    private func assertSourceAbsentOnDisk(_ source: String) throws {
+        for url in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) where url.pathExtension == "json" {
+            XCTAssertFalse(String(decoding: try Data(contentsOf: url), as: UTF8.self).contains(source), url.lastPathComponent)
+        }
+    }
+    func testDeletedRowCannotReturnAfterReopenStaleSaveOrRestore() throws {
+        let history = HistoryManager(conversationDirectory: directory)
+        var conversation = saved()
+        var survivor = TranslationSession(originalText: "Keep this other sentence.", direction: .englishToChinese)
+        survivor.isCompleted = true; survivor.translatedText = "保留的译文。"
+        conversation.lines.append(survivor)
+        history.saveConversation(conversation)
+        history.saveTranslation(record(conversation.lines[0]))
+        history.saveTranslation(record(survivor))
+        let model = makeModel(history)
+        history.deleteRecord(record(conversation.lines[0]))
+        XCTAssertEqual(model.displayEntries.map(\.originalText), [survivor.originalText])
+        model.checkpointConversation()
+        history.saveConversation(conversation) // stale queued checkpoint
+        history.saveTranslation(record(conversation.lines[0])) // late completion
+        let reopened = HistoryManager(conversationDirectory: directory)
+        reopened.saveConversation(conversation) // stale object after reopening
+        model.restoreConversation(conversation)
+        XCTAssertFalse(model.displayEntries.contains { $0.id == conversation.lines[0].id })
+        XCTAssertEqual(reopened.activeConversation()?.lines.map(\.id), [survivor.id])
+        XCTAssertFalse(reopened.translationHistory.contains { $0.id == conversation.lines[0].id })
+        try assertSourceAbsentOnDisk(conversation.lines[0].originalText)
+    }
+    func testClearAllClearsOpenWindowAndRejectsOldCheckpointsAcrossRestart() throws {
+        let history = HistoryManager(conversationDirectory: directory)
+        let conversation = saved()
+        history.saveConversation(conversation)
+        history.saveTranslation(record(conversation.lines[0]))
+        let model = makeModel(history)
+        XCTAssertFalse(model.displayEntries.isEmpty)
+        history.clearAllHistory()
+        XCTAssertTrue(model.displayEntries.isEmpty)
+        model.checkpointConversation()
+        model.restoreConversation(conversation)
+        history.saveConversation(conversation)
+        let reopened = HistoryManager(conversationDirectory: directory)
+        reopened.saveConversation(conversation)
+        XCTAssertNil(reopened.activeConversation())
+        XCTAssertTrue(reopened.savedConversations.isEmpty)
+        XCTAssertTrue(model.displayEntries.isEmpty)
+        try assertSourceAbsentOnDisk(conversation.lines[0].originalText)
+        // New conversations can still be saved after deleting old ones.
+        let fresh = saved()
+        reopened.saveConversation(fresh)
+        XCTAssertEqual(reopened.activeConversation()?.id, fresh.id)
+    }
+    func testInternalReplacementDoesNotDeleteConversationOrBlockCorrectedRow() {
+        let history = HistoryManager(conversationDirectory: directory)
+        let conversation = saved()
+        let original = record(conversation.lines[0])
+        history.saveConversation(conversation)
+        history.saveTranslation(original)
+        history.removeReplacedRecord(original)
+        let replacement = TranslationRecord(originalText: "Corrected private source.", translatedText: "更正译文。",
+                                            direction: original.direction, timestamp: original.timestamp, id: original.id)
+        history.saveTranslation(replacement)
+        XCTAssertFalse(history.isDeleted(original.id))
+        XCTAssertEqual(history.translationHistory.first(where: { $0.id == original.id })?.originalText, replacement.originalText)
+        XCTAssertEqual(history.activeConversation()?.lines.count, 1)
+    }
+    func testSystemPermissionFailureCannotRequestOrStartMicrophone() async {
+        let speech = SpeechRecognizer()
+        speech.setAudioInputSource(.systemAudio)
+        speech.isRecording = true
+        speech.screenCaptureAuthorization = { false }
+        var microphoneChecks = 0
+        speech.microphoneAuthorization = { microphoneChecks += 1; return .authorized }
+        do { try await speech.fallbackToScreenCaptureKit(SFSpeechAudioBufferRecognitionRequest()); XCTFail("Must reject unavailable system audio") }
+        catch { XCTAssertEqual(error as? SystemAudioError, .permissionDenied) }
+        XCTAssertEqual(microphoneChecks, 0)
+        XCTAssertFalse(speech.isListening)
+        XCTAssertEqual(speech.audioHeartbeat.snapshot().bufferAt, nil)
+        speech.stopRecording()
+    }
+    func testSystemCaptureFailureStaysOnSystemSourceAcrossRetries() async {
+        let speech = SpeechRecognizer()
+        speech.setAudioInputSource(.systemAudio)
+        speech.isRecording = true
+        speech.screenCaptureAuthorization = { true }
+        var failures = 0, microphoneChecks = 0
+        speech.screenCaptureStart = { _ in failures += 1; throw SystemAudioError.streamStartFailed("synthetic failure") }
+        speech.microphoneAuthorization = { microphoneChecks += 1; return .authorized }
+        for _ in 0..<3 {
+            do { try await speech.fallbackToScreenCaptureKit(SFSpeechAudioBufferRecognitionRequest()); XCTFail("Capture must fail") }
+            catch { XCTAssertEqual(error as? SystemAudioError, .streamStartFailed("synthetic failure")) }
+        }
+        XCTAssertEqual(failures, 3)
+        XCTAssertEqual(microphoneChecks, 0)
+        XCTAssertFalse(speech.isListening)
+        XCTAssertNil(speech.audioHeartbeat.snapshot().bufferAt)
+        speech.stopRecording()
+    }
+    func testFullSystemStartupStopsOnDeniedPermissionWithoutMicrophone() async throws {
+        let speech = SpeechRecognizer()
+        speech.authorizationStatus = .authorized
+        speech.setLanguage("en-US")
+        speech.setAudioInputSource(.systemAudio)
+        speech.coreAudioCaptureStart = { _ in throw SystemAudioError.deviceNotAvailable }
+        speech.screenCaptureAuthorization = { false }
+        var microphoneChecks = 0
+        speech.microphoneAuthorization = { microphoneChecks += 1; return .authorized }
+        speech.startRecording()
+        for _ in 0..<100 where speech.recordingPhase != .failed {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(speech.recordingPhase, .failed)
+        XCTAssertFalse(speech.isRecording)
+        XCTAssertFalse(speech.isListening)
+        XCTAssertEqual(speech.selectedAudioInputSource, .systemAudio)
+        XCTAssertEqual(microphoneChecks, 0)
+        XCTAssertNil(speech.audioHeartbeat.snapshot().bufferAt)
+        XCTAssertTrue(speech.recordingStatus.contains("麦克风未开启"))
+        speech.stopRecording()
+    }
+    func testClearingDuringDelayedTranslationCannotRestoreDeletedSource() async throws {
+        let history = HistoryManager(conversationDirectory: directory)
+        let settings = MockAppSettings(); settings.keepHistory = true
+        let speech = MockSpeechRecognizer()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationHTTPStub.self]
+        TranslationHTTPStub.handler = { _ in .init(data: TranslationHTTPStub.translated("Late private translation"), delay: 0.3) }
+        defer { TranslationHTTPStub.handler = nil }
+        let model = MainViewModel(speechRecognizer: speech,
+            translationService: TranslationService(appSettings: settings, session: URLSession(configuration: configuration)),
+            historyManager: history, appSettings: settings)
+        speech.isRecording = true
+        speech.recognizedText = "Private synthetic source."
+        try await Task.sleep(nanoseconds: 40_000_000)
+        model.checkpointConversation()
+        history.clearAllHistory()
+        try await Task.sleep(nanoseconds: 500_000_000)
+        model.checkpointConversation()
+        XCTAssertTrue(model.displayEntries.isEmpty)
+        XCTAssertTrue(history.translationHistory.isEmpty)
+        XCTAssertNil(HistoryManager(conversationDirectory: directory).activeConversation())
+        XCTAssertFalse(history.exportHistory().contains("Private synthetic source"))
+        try assertSourceAbsentOnDisk("Private synthetic source")
+        model.stopTranslation()
+    }
+    func testContinuingRecognitionAndManualEditingCannotResurrectDeletedRow() async throws {
+        let history = HistoryManager(conversationDirectory: directory)
+        let settings = MockAppSettings(); settings.keepHistory = true
+        settings.selectedLanguageDirection = .englishToChinese
+        let speech = MockSpeechRecognizer()
+        let model = MainViewModel(speechRecognizer: speech, translationService: MockTranslationService(),
+                                  historyManager: history, appSettings: settings)
+        speech.isRecording = true
+        speech.recognizedText = "Private synthetic source."
+        try await Task.sleep(nanoseconds: 350_000_000)
+        let deleted = try XCTUnwrap(history.translationHistory.first { $0.originalText == "Private synthetic source." })
+        history.deleteRecord(deleted)
+        speech.recognizedText = "Private synthetic source. Another public sentence."
+        try await Task.sleep(nanoseconds: 350_000_000)
+        XCTAssertFalse(model.displayEntries.contains { $0.originalText.contains("Private synthetic source") })
+        let survivor = try XCTUnwrap(model.displayEntries.first)
+        XCTAssertTrue(model.updateOriginalText(entryID: survivor.id, text: "Corrected public sentence."))
+        try await Task.sleep(nanoseconds: 350_000_000)
+        model.stopTranslation()
+        model.checkpointConversation()
+        let reopened = HistoryManager(conversationDirectory: directory)
+        XCTAssertFalse(reopened.savedConversations.contains { $0.searchText.contains("Private synthetic source") })
+        XCTAssertTrue(reopened.savedConversations.contains { $0.searchText.contains("Corrected public sentence") })
+        try assertSourceAbsentOnDisk("Private synthetic source")
+    }
+    func testHistoryDeletionClearsSuggestionsAndDiscardsTheirLateReply() async throws {
+        let history = HistoryManager(conversationDirectory: directory)
+        let model = makeModel(history)
+        model.appSettings.apiProvider = .customAPI
+        model.appSettings.customAPIKey = "synthetic-suggestions-test-key"
+        model.appSettings.customAPIBaseURL = "https://test.invalid/v1/chat/completions"
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TranslationHTTPStub.self]
+        model.suggestionService.session = URLSession(configuration: configuration)
+        let started = expectation(description: "Suggestion request started")
+        let content = "[{\"tag\":\"reply\",\"primary\":\"Private suggestion\",\"secondary\":\"旧建议\"}]"
+        let response = try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": content]]]])
+        TranslationHTTPStub.handler = { _ in
+            started.fulfill()
+            return .init(data: response, delay: 0.3)
+        }
+        defer { TranslationHTTPStub.handler = nil }
+        model.suggestionService.suggestions = [ChatSuggestion(tag: .reply, primaryText: "Private source", secondaryText: "旧建议")]
+        model.suggestionService.refresh(from: [TranslationEntryModel(originalText: "Private synthetic source.")], direction: .englishToChinese)
+        await fulfillment(of: [started], timeout: 2)
+        history.clearAllHistory()
+        XCTAssertTrue(model.suggestionService.suggestions.isEmpty)
+        try await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertTrue(model.suggestionService.suggestions.isEmpty)
+        XCTAssertFalse(model.suggestionService.isGenerating)
+    }
+    func testLegacyCleanupWithRealOSKeychainAndSyntheticCredentials() throws {
+        let store = NamespacedSystemKeyStore()
+        let key = Constants.UserDefaults.customAPIKey
+        let value = "synthetic-local-migration-check"
+        guard store.save(value: value, service: "ignored", account: key, allowInteraction: false) else {
+            throw XCTSkip("System keychain unavailable on this test host")
+        }
+        defer { _ = store.delete(service: "ignored", account: key, allowInteraction: false) }
+        let url = try legacyFile([key: value, "stored_" + key: value, "preserve": "settings"])
+        let settings = AppSettings(secureStore: store, defaults: prefs, legacyPreferencesURL: url)
+        XCTAssertEqual(settings.customAPIKey, value)
+        XCTAssertNil(try readLegacy(url)[key])
+        XCTAssertNil(try readLegacy(url)["stored_" + key])
+        XCTAssertEqual(try readLegacy(url)["preserve"] as? String, "settings")
+        settings.apiProvider = .customAPI
+        settings.clearApiKey()
+        if case .missing = store.read(service: "ignored", account: key, allowInteraction: false) {} else { XCTFail("Synthetic key must be removed") }
+    }
+    private func legacyFile(_ values: [String: Any]) throws -> URL {
+        let url = directory.appendingPathComponent("legacy.plist")
+        try PropertyListSerialization.data(fromPropertyList: values, format: .binary, options: 0).write(to: url)
+        return url
+    }
+    private func readLegacy(_ url: URL) throws -> [String: Any] {
+        try XCTUnwrap(PropertyListSerialization.propertyList(from: Data(contentsOf: url), format: nil) as? [String: Any])
+    }
+    func testBothLegacyKeysCleanedAfterVerifiedSecureMigrationAndReload() throws {
+        let a = Constants.UserDefaults.openAIApiKey, b = Constants.UserDefaults.customAPIKey
+        let url = try legacyFile([a: "synthetic-old-a", "stored_" + a: "synthetic-old-a", b: "synthetic-old-b", "stored_" + b: "synthetic-old-b", "untouched": "preserve me"])
+        let store = IsolatedKeyStore()
+        _ = AppSettings(secureStore: store, defaults: prefs, legacyPreferencesURL: url)
+        XCTAssertEqual(store.values[a], "synthetic-old-a")
+        XCTAssertEqual(store.values[b], "synthetic-old-b")
+        let remaining = try readLegacy(url)
+        XCTAssertEqual(remaining["untouched"] as? String, "preserve me")
+        for key in [a,b] { XCTAssertNil(remaining[key]); XCTAssertNil(remaining["stored_" + key]) }
+        XCTAssertEqual(AppSettings(secureStore: store, defaults: prefs, legacyPreferencesURL: url).customAPIKey, "synthetic-old-b")
+    }
+    func testPreviouslyMigratedSettingsStillCleanOldCopyWithoutOverwritingNewKey() throws {
+        let key = Constants.UserDefaults.customAPIKey
+        let store = IsolatedKeyStore(); store.values[key] = "newer-secure-key"
+        prefs.set(LanguageDirection.englishToChinese.rawValue, forKey: Constants.UserDefaults.selectedLanguageDirection)
+        let url = try legacyFile([key: "obsolete-copy", Constants.UserDefaults.selectedLanguageDirection: LanguageDirection.chineseToEnglish.rawValue])
+        let settings = AppSettings(secureStore: store, defaults: prefs, legacyPreferencesURL: url)
+        XCTAssertEqual(settings.customAPIKey, "newer-secure-key")
+        XCTAssertEqual(settings.selectedLanguageDirection, .englishToChinese)
+        XCTAssertNil(try readLegacy(url)[key])
+    }
+    func testFailedSecureMigrationKeepsOldCopyAndCanRetrySafely() throws {
+        let key = Constants.UserDefaults.customAPIKey
+        let store = IsolatedKeyStore(); store.writesAllowed = false
+        let url = try legacyFile([key: "only-copy-until-secure"])
+        let settings = AppSettings(secureStore: store, defaults: prefs, legacyPreferencesURL: url)
+        XCTAssertFalse(settings.apiKeyStorageWarning.isEmpty)
+        XCTAssertEqual(try readLegacy(url)[key] as? String, "only-copy-until-secure")
+        store.writesAllowed = true
+        let retried = AppSettings(secureStore: store, defaults: prefs, legacyPreferencesURL: url)
+        XCTAssertEqual(retried.customAPIKey, "only-copy-until-secure")
+        XCTAssertNil(try readLegacy(url)[key])
+    }
+    func testExplicitClearAlsoRemovesOldCopiesWithoutDeletingOtherProvider() throws {
+        let a = Constants.UserDefaults.openAIApiKey, b = Constants.UserDefaults.customAPIKey
+        let store = IsolatedKeyStore(); store.readsUnavailable = true
+        store.values[a] = "secure-a"; store.values[b] = "secure-b"
+        let url = try legacyFile([a: "old-a", b: "old-b", "keep": 123])
+        let settings = AppSettings(secureStore: store, defaults: prefs, legacyPreferencesURL: url)
+        settings.apiProvider = .customAPI
+        settings.clearApiKey()
+        XCTAssertNil(store.values[b]); XCTAssertEqual(store.values[a], "secure-a")
+        let remaining = try readLegacy(url)
+        XCTAssertNil(remaining[b]); XCTAssertEqual(remaining[a] as? String, "old-a")
+        XCTAssertEqual(remaining["keep"] as? Int, 123)
+    }
+}
+
+private final class NamespacedSystemKeyStore: APIKeyStore {
+    private let system = SystemAPIKeyStore()
+    private let namespace = "com.voicetranslation.security-check." + UUID().uuidString
+    func save(value: String, service: String, account: String, allowInteraction: Bool) -> Bool {
+        system.save(value: value, service: namespace, account: account, allowInteraction: allowInteraction)
+    }
+    func read(service: String, account: String, allowInteraction: Bool) -> APIKeyReadResult {
+        system.read(service: namespace, account: account, allowInteraction: allowInteraction)
+    }
+    func delete(service: String, account: String, allowInteraction: Bool) -> Bool {
+        system.delete(service: namespace, account: account, allowInteraction: allowInteraction)
+    }
+}

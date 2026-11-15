@@ -32,6 +32,10 @@ class SpeechRecognizer: ObservableObject {
     private var captureStartedAt = Date.distantPast
     private var captureReady = false
     private var microphonePermissionSession: UUID?
+    var selectedAudioInputSource: AudioInputSource { currentAudioInputSource }
+    var coreAudioCaptureStart: ((SFSpeechAudioBufferRecognitionRequest) async throws -> Void)?
+    var screenCaptureAuthorization: () -> Bool = { CGPreflightScreenCaptureAccess() }
+    var screenCaptureStart: ((SFSpeechAudioBufferRecognitionRequest) async throws -> Void)?
     var microphoneAuthorization: () -> AVAuthorizationStatus = { AVCaptureDevice.authorizationStatus(for: .audio) }
     var requestMicrophoneAuthorization: () async -> Bool = { await AVCaptureDevice.requestAccess(for: .audio) }
     var isWaitingForMicrophonePermission: Bool { microphonePermissionSession != nil }
@@ -281,7 +285,12 @@ class SpeechRecognizer: ObservableObject {
                 self.startupTask = nil
                 let failure = error as NSError
                 self.captureLogger.error("Capture startup failed: \(failure.domain, privacy: .public)/\(failure.code)")
-                self.scheduleCaptureRecovery(reason: "收音暂时中断，正在重新连接")
+                if let audioError = error as? SystemAudioError, !audioError.isRetryable {
+                    self.stopRecording()
+                    self.setRecordingPhase(.failed, message: "系统音频未能开启，请检查权限后重试；麦克风未开启")
+                } else {
+                    self.scheduleCaptureRecovery(reason: "收音暂时中断，正在重新连接")
+                }
             }
         }
     }
@@ -503,14 +512,18 @@ class SpeechRecognizer: ObservableObject {
                 print("🔊 启动Core Audio Tap系统音频捕获（支持静音模式）...")
 
                 do {
-                    let tapCapture = CoreAudioTapCapture()
-                    coreAudioTapCapture = tapCapture
-                    tapCapture.audioHeartbeat = audioHeartbeat
-                    try await tapCapture.setupSystemAudioCapture(with: recognitionRequest)
-                    guard !Task.isCancelled, self.recognitionTaskID == sessionID else { tapCapture.cleanup(); throw CancellationError() }
-                    try await tapCapture.start()
-                    guard !Task.isCancelled, self.recognitionTaskID == sessionID else { tapCapture.cleanup(); throw CancellationError() }
+                    if let coreAudioCaptureStart {
+                        try await coreAudioCaptureStart(recognitionRequest)
+                    } else {
+                        let tapCapture = CoreAudioTapCapture()
+                        coreAudioTapCapture = tapCapture
+                        tapCapture.audioHeartbeat = audioHeartbeat
+                        try await tapCapture.setupSystemAudioCapture(with: recognitionRequest)
+                        guard !Task.isCancelled, self.recognitionTaskID == sessionID else { tapCapture.cleanup(); throw CancellationError() }
+                        try await tapCapture.start()
+                        guard !Task.isCancelled, self.recognitionTaskID == sessionID else { tapCapture.cleanup(); throw CancellationError() }
 
+                    }
                     print("✅ Core Audio Tap捕获启动成功（静音模式下仍可捕获音频）")
 
                     // 添加延迟确保稳定运行
@@ -533,10 +546,8 @@ class SpeechRecognizer: ObservableObject {
             } else {
                 // macOS 12.3 - 14.1: 使用ScreenCaptureKit
                 guard #available(macOS 12.3, *) else {
-                    print("❌ 系统音频模式需要macOS 12.3或更高版本，回退到麦克风")
-                    await updateAudioInputSourceToMicrophone(reason: "macOS版本不支持")
-                    try await prepareAndStartMicrophone()
-                    return
+                    print("❌ 系统音频模式需要macOS 12.3或更高版本，已停止收音")
+                    throw SystemAudioError.systemVersionUnsupported
                 }
 
                 try await fallbackToScreenCaptureKit(recognitionRequest)
@@ -598,6 +609,7 @@ class SpeechRecognizer: ObservableObject {
     }
 
     private func prepareAndStartMicrophone() async throws {
+        guard currentAudioInputSource == .microphone else { throw SystemAudioError.permissionDenied }
         try await ensureMicrophonePermission()
         let sessionID = recognitionTaskID
         // A disconnected Bluetooth route must not survive in a reused audio engine.
@@ -629,43 +641,19 @@ class SpeechRecognizer: ObservableObject {
 
     /// 回退到ScreenCaptureKit进行系统音频捕获
     @available(macOS 12.3, *)
-    private func fallbackToScreenCaptureKit(_ recognitionRequest: SFSpeechAudioBufferRecognitionRequest) async throws {
-        print("🔊 启动ScreenCaptureKit系统音频捕获...")
-
-        do {
-            let capture = SystemAudioCapture()
-
-            // 只使用 CGPreflightScreenCaptureAccess 检查权限
-            let hasPermission = CGPreflightScreenCaptureAccess()
-            print("🔍 屏幕录制权限检查: \(hasPermission ? "已授权" : "未授权")")
-
-            if !hasPermission {
-                print("📱 屏幕录制权限不足，自动回退到麦克风模式")
-                print("💡 如需使用系统音频，请前往【系统设置】>【隐私与安全性】>【屏幕录制】手动授权")
-
-                await updateAudioInputSourceToMicrophone(reason: "屏幕录制权限不足")
-                try await prepareAndStartMicrophone()
-                return
-            }
-
-            print("✅ 屏幕录制权限已授予，继续使用系统音频模式")
-            print("⚠️ 注意：ScreenCaptureKit模式在系统静音时可能无法捕获音频")
-
-            capture.audioHeartbeat = audioHeartbeat
-            systemAudioCapture = capture
-            try await setupSystemAudioCaptureWithRetry(recognitionRequest)
-            try await startSystemAudioCaptureWithRetry()
-
-            print("✅ ScreenCaptureKit系统音频捕获启动成功")
-            try await Task.sleep(nanoseconds: 200_000_000) // 200ms
-
-        } catch {
-            if Task.isCancelled { throw CancellationError() }
-            print("❌ ScreenCaptureKit系统音频设置失败: \(error.localizedDescription)")
-            print("📱 自动回退到麦克风模式")
-            await updateAudioInputSourceToMicrophone(reason: "系统音频设置失败")
-            try await prepareAndStartMicrophone()
+    func fallbackToScreenCaptureKit(_ recognitionRequest: SFSpeechAudioBufferRecognitionRequest) async throws {
+        // Failure may retry this source, but must never expand capture to the room.
+        guard screenCaptureAuthorization() else { throw SystemAudioError.permissionDenied }
+        if let screenCaptureStart {
+            try await screenCaptureStart(recognitionRequest)
+            return
         }
+        let capture = SystemAudioCapture()
+        capture.audioHeartbeat = audioHeartbeat
+        systemAudioCapture = capture
+        try await setupSystemAudioCaptureWithRetry(recognitionRequest)
+        try await startSystemAudioCaptureWithRetry()
+        try await Task.sleep(nanoseconds: 200_000_000)
     }
 
     private func startMicrophoneEngine() throws {
@@ -925,30 +913,6 @@ class SpeechRecognizer: ObservableObject {
     }
     
     // MARK: - Enhanced Error Handling
-    
-    /// 安全回退到麦克风模式
-    private func fallbackToMicrophone() async throws {
-        print("🔄 开始回退到麦克风模式...")
-        await updateAudioInputSourceToMicrophone(reason: "系统音频不可用")
-        try await prepareAndStartMicrophone()
-        print("✅ 已成功回退到麦克风模式")
-    }
-    
-    /// 更新音频输入源状态为麦克风（在主线程上执行）
-    private func updateAudioInputSourceToMicrophone(reason: String) async {
-        await MainActor.run {
-            print("⚠️ 音频输入源切换: 系统音频 → 麦克风 (原因: \(reason))")
-            currentAudioInputSource = .microphone
-            audioSourceStatus = "已切换至麦克风 (\(reason))"
-            
-            // 发送通知到主线程，让UI组件知道状态已变更
-            NotificationCenter.default.post(
-                name: NSNotification.Name("AudioInputSourceChanged"), 
-                object: AudioInputSource.microphone,
-                userInfo: ["reason": reason]
-            )
-        }
-    }
     
     /// 带重试机制的系统音频设置
     @available(macOS 12.3, *)

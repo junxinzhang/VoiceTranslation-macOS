@@ -35,6 +35,9 @@ class SuggestionService: ObservableObject {
 
     /// Debounce timer to avoid regenerating on every keystroke
     private var generateTimer: Timer?
+    private var generationTask: Task<Void, Never>?
+    private var generation = UUID()
+    var session: URLSession = .shared
 
     /// Maximum number of suggestions to generate per request
     private let maxSuggestions = 4
@@ -68,9 +71,11 @@ class SuggestionService: ObservableObject {
     ) {
         // Debounce: cancel any pending generation
         generateTimer?.invalidate()
+        let token = generation
         generateTimer = Timer.scheduledTimer(withTimeInterval: debounceDelay, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
-                await self?.performGeneration(from: entries, direction: direction)
+                guard let self, self.generation == token else { return }
+                self.generationTask = Task { await self.performGeneration(from: entries, direction: direction, token: token) }
             }
         }
     }
@@ -82,9 +87,23 @@ class SuggestionService: ObservableObject {
     ) {
         // Force refresh: reset hash so it won't skip
         lastContextHash = 0
-        Task {
-            await performGeneration(from: entries, direction: direction)
+        generationTask?.cancel()
+        let token = generation
+        generationTask = Task {
+            await performGeneration(from: entries, direction: direction, token: token)
         }
+    }
+
+    func clearDeletedContent() {
+        generation = UUID()
+        generateTimer?.invalidate()
+        generateTimer = nil
+        generationTask?.cancel()
+        generationTask = nil
+        suggestions = []
+        isGenerating = false
+        lastContextHash = 0
+        lastGenerateTime = .distantPast
     }
 
     /// Toggle expanded/collapsed state
@@ -98,8 +117,10 @@ class SuggestionService: ObservableObject {
 
     private func performGeneration(
         from entries: [TranslationEntryModel],
-        direction: LanguageDirection
+        direction: LanguageDirection,
+        token: UUID
     ) async {
+        guard generation == token, !Task.isCancelled else { return }
         // Don't generate if no conversation yet
         guard !entries.isEmpty else {
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -145,6 +166,7 @@ class SuggestionService: ObservableObject {
                 settings: settings
             )
 
+            guard generation == token, !Task.isCancelled else { return }
             withAnimation(.easeInOut(duration: 0.25)) {
                 suggestions = newSuggestions
                 isGenerating = false
@@ -153,6 +175,7 @@ class SuggestionService: ObservableObject {
             print("💡 生成了 \(newSuggestions.count) 条上下文建议")
 
         } catch {
+            guard generation == token, !Task.isCancelled else { return }
             print("💡 建议生成失败: \(error.localizedDescription)")
             isGenerating = false
             // Reset hash so next attempt won't be skipped
@@ -289,7 +312,7 @@ class SuggestionService: ObservableObject {
         request.httpBody = try JSONEncoder().encode(body)
 
         // Call API
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SuggestionError.invalidResponse

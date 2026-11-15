@@ -201,6 +201,10 @@ class MainViewModel: ObservableObject {
     // MARK: - Setup Bindings
     
     private func setupBindings() {
+        historyManager.deletions.sink { [weak self] deletion in
+            self?.applyHistoryDeletion(deletion)
+        }.store(in: &cancellables)
+
         appSettings.$translationGlossary.combineLatest(appSettings.$selectedLanguageDirection)
             .sink { [weak self] terms, direction in
                 guard let self else { return }
@@ -295,8 +299,6 @@ class MainViewModel: ObservableObject {
         // 音频质量监控
         setupAudioQualityMonitoring()
         
-        // 监听音频输入源变化通知
-        setupAudioInputSourceNotificationHandling()
         
 
     }
@@ -356,6 +358,10 @@ class MainViewModel: ObservableObject {
         checkpointConversation()
         guard !appSettings.keepHistory || (translationQueue.isEmpty && transcript.pendingText.isEmpty) || historyManager.saveError.isEmpty else { return }
         historyManager.finishActiveConversation()
+        resetCurrentConversation()
+    }
+
+    private func resetCurrentConversation() {
         isRestoringConversation = true
         conversationID = UUID()
         conversationStartedAt = Date()
@@ -407,6 +413,7 @@ class MainViewModel: ObservableObject {
 
     private func submitTranscriptLines(_ lines: [LiveTranscript.Line]) {
         for line in lines {
+            guard !historyManager.isDeleted(line.id) else { continue }
             if let index = translationQueue.firstIndex(where: { $0.id == line.id }) {
                 guard translationQueue[index].manualOriginal == nil,
                       translationQueue[index].originalText != line.text else { continue }
@@ -457,7 +464,7 @@ class MainViewModel: ObservableObject {
         let previous = translationQueue[index]
         for record in historyManager.translationHistory where record.id == entryID ||
             (record.timestamp == previous.createdAt && record.direction == previous.direction && record.originalText == previous.originalText) {
-            historyManager.deleteRecord(record)
+            historyManager.removeReplacedRecord(record)
         }
         savedSessionRecords.removeValue(forKey: entryID)
         transcript.protect(entryID)
@@ -870,10 +877,38 @@ class MainViewModel: ObservableObject {
         )
 
         if let previous = savedSessionRecords[session.id] {
-            historyManager.deleteRecord(previous)
+            historyManager.removeReplacedRecord(previous)
         }
         historyManager.saveTranslation(record)
         savedSessionRecords[session.id] = record
+    }
+
+    private func applyHistoryDeletion(_ deletion: HistoryManager.Deletion) {
+        suggestionService.clearDeletedContent()
+        TTSService.shared.stop()
+        switch deletion {
+        case .all:
+            resetCurrentConversation()
+        case .records(let ids):
+            // Invalidate both workers before removing rows so late replies cannot restore them.
+            transcriptEpoch = UUID()
+            translationTask?.cancel()
+            translationTask = nil
+            translationService.clearTranslation()
+            cancelSecondaryTranslation()
+            currentSessionId = nil
+            activeRequestText = nil
+            currentOriginalText = ""
+            currentTranslatedText = ""
+            for id in ids { transcript.protect(id); savedSessionRecords.removeValue(forKey: id) }
+            translationQueue.removeAll { ids.contains($0.id) }
+            automaticSessionIDs.subtract(ids)
+            pendingSentenceQueue = translationQueue.filter { !$0.isCompleted }.map(\.id)
+            lastSavedConversationData = nil
+            rebuildAccumulatedDisplay()
+            checkpointConversation()
+            processNextQueuedSentenceIfNeeded()
+        }
     }
 
     func checkpointConversation() {
@@ -891,7 +926,7 @@ class MainViewModel: ObservableObject {
     }
 
     func restoreConversation(_ saved: SavedConversation) {
-        guard !speechRecognizer.isRecording else { return }
+        guard !historyManager.isConversationDeleted(saved.id), !speechRecognizer.isRecording else { return }
         checkpointConversation()
         guard !appSettings.keepHistory || (translationQueue.isEmpty && transcript.pendingText.isEmpty) || historyManager.saveError.isEmpty else { return }
         cancelSecondaryTranslation()
@@ -911,7 +946,7 @@ class MainViewModel: ObservableObject {
         currentTranslatedText = ""
         savedSessionRecords.removeAll()
         displayEntries = []
-        translationQueue = saved.lines
+        translationQueue = saved.lines.filter { !historyManager.isDeleted($0.id) }
         if LiveTranscript.isMeaningful(saved.draft) {
             translationQueue.append(TranslationSession(originalText: saved.draft, direction: saved.draftDirection, createdAt: saved.updatedAt))
         }
@@ -979,20 +1014,12 @@ class MainViewModel: ObservableObject {
     
     // MARK: - Audio Source Management
     
-    private func checkSystemAudioPermissionAndFallback() {
-        Task { @MainActor in
-            _ = ensureSystemAudioPermission()
-        }
-    }
-    
-    /// 检查并在必要时请求屏幕录制权限，未授权时自动回退到麦克风
-    /// 注意：macOS 14.2+ 使用 Core Audio Tap，不需要屏幕录制权限
+    /// Permission failure preserves the user's chosen source and leaves capture stopped.
     @discardableResult
     private func ensureSystemAudioPermission() -> Bool {
         // 仅在 macOS 12.3+ 上支持系统音频
         guard #available(macOS 12.3, *) else {
-            showAudioSourceFallbackMessage("系统音频需要 macOS 12.3 或更高版本，已自动切换到麦克风模式")
-            appSettings.audioInputSource = .microphone
+            showAudioSourceFallbackMessage("系统音频需要 macOS 12.3 或更高版本；麦克风未开启")
             return false
         }
 
@@ -1017,8 +1044,7 @@ class MainViewModel: ObservableObject {
         print("🪟 屏幕录制权限请求结果: \(granted ? "已授权" : "被拒绝")")
 
         guard granted else {
-            showAudioSourceFallbackMessage("系统音频需要屏幕录制权限，请在系统设置中授权后重试，已自动切换到麦克风模式")
-            appSettings.audioInputSource = .microphone
+            showAudioSourceFallbackMessage("系统音频需要屏幕录制权限，请在系统设置中授权后重试；麦克风未开启")
             return false
         }
 
@@ -1124,39 +1150,6 @@ class MainViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-    /// 设置音频输入源通知处理
-    private func setupAudioInputSourceNotificationHandling() {
-        NotificationCenter.default.publisher(for: NSNotification.Name("AudioInputSourceChanged"))
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] notification in
-                guard let self = self,
-                      let newSource = notification.object as? AudioInputSource,
-                      let reason = notification.userInfo?["reason"] as? String else {
-                    return
-                }
-                
-                print("📱 收到音频输入源变化通知: \(newSource.displayName) (原因: \(reason))")
-                
-                // 更新应用设置中的音频输入源
-                self.appSettings.audioInputSource = newSource
-                
-                // 显示用户友好的回退消息
-                let message = "系统音频不可用(\(reason))，已自动切换到麦克风模式"
-                self.showExtendedFeedbackMessage(message, type: .warning, duration: 8.0)
-                
-                // 更新状态显示
-                self.audioSourceFallbackMessage = message
-                
-                // 8秒后清除消息
-                DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) {
-                    if self.audioSourceFallbackMessage == message {
-                        self.audioSourceFallbackMessage = ""
-                    }
-                }
-            }
-            .store(in: &cancellables)
-    }
-
     private func handlePermissionStatusChange(_ change: PermissionStatusChange) {
         updatePermissionStatusSummary()
 

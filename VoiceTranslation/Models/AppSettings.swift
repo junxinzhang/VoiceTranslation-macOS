@@ -115,6 +115,8 @@ class AppSettings: ObservableObject {
     
     static let testUserDefaultsSuiteName = "\(Constants.App.bundleIdentifier).tests"
 
+    private var legacyPreferencesURL: URL? = URL(fileURLWithPath: NSHomeDirectory())
+        .appendingPathComponent("Library/Containers/\(Constants.App.bundleIdentifier)/Data/Library/Preferences/\(Constants.App.bundleIdentifier).plist")
     private let isRunningTests: Bool
     private let userDefaults: UserDefaults
     private var cancellables = Set<AnyCancellable>()
@@ -136,77 +138,79 @@ class AppSettings: ObservableObject {
     }
 
     /// Isolated storage for migration/failure tests; never touches the real keychain.
-    init(secureStore: APIKeyStore, defaults: UserDefaults) {
+    init(secureStore: APIKeyStore, defaults: UserDefaults, legacyPreferencesURL: URL? = nil) {
         self.isRunningTests = false
         self.userDefaults = defaults
         self.secureStore = secureStore
+        self.legacyPreferencesURL = legacyPreferencesURL
+        migrateFromSandboxIfNeeded()
         loadFromUserDefaults()
     }
 
     // MARK: - Migration
 
-    /// 从沙盒位置迁移设置（禁用沙盒后需要）
+    /// Revisit old files even after normal preferences have already migrated.
     private func migrateFromSandboxIfNeeded() {
-        // 检查是否已经有配置，如果有则不需要迁移
-        let existingOpenAIKey = loadStoredAPIKey(for: Constants.UserDefaults.openAIApiKey)
-        let existingCustomKey = loadStoredAPIKey(for: Constants.UserDefaults.customAPIKey)
-        if !existingOpenAIKey.isEmpty || !existingCustomKey.isEmpty ||
-            userDefaults.object(forKey: Constants.UserDefaults.selectedLanguageDirection) != nil {
-            return
-        }
+        guard let url = legacyPreferencesURL, FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            guard let legacy = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else {
+                throw CocoaError(.propertyListReadCorrupt)
+            }
+            var removable = Set<String>()
+            for key in [Constants.UserDefaults.openAIApiKey, Constants.UserDefaults.customAPIKey] {
+                let fields = ["stored_" + key, key]
+                guard let candidate = fields.compactMap({ legacy[$0] as? String }).first(where: { !$0.isEmpty }) else { continue }
+                let current = loadStoredAPIKey(for: key)
+                switch secureStore.read(service: keychainServiceName, account: key, allowInteraction: false) {
+                case .value:
+                    // An existing (possibly newer) secure key takes precedence over old copies.
+                    removable.insert(key)
+                case .missing:
+                    let value = current.isEmpty ? candidate : current
+                    if secureStore.save(value: value, service: keychainServiceName, account: key, allowInteraction: false),
+                       case .value(let saved) = secureStore.read(service: keychainServiceName, account: key, allowInteraction: false), saved == value {
+                        securelyStoredKeys[key] = saved
+                        removable.insert(key)
+                    } else { apiKeyStorageWarning = "旧密钥尚未安全迁移，旧副本已保留。请解锁钥匙串后重新保存。" }
+                case .unavailable:
+                    apiKeyStorageWarning = "暂时无法确认钥匙串中的密钥，旧副本已保留。请解锁钥匙串后重试。"
+                }
+            }
+            if !cleanupLegacyKeyCopies(for: removable) {
+                apiKeyStorageWarning = "密钥已安全保存，但旧配置副本尚未清理成功，请检查文件访问权限后重试。"
+            }
+            // Preserve existing preferences; copy only missing non-secret fields.
+            let preferenceKeys = [Constants.UserDefaults.customAPIBaseURL, Constants.UserDefaults.customAPIModel,
+                Constants.UserDefaults.apiProvider, Constants.UserDefaults.selectedLanguageDirection,
+                Constants.UserDefaults.keepHistory, Constants.UserDefaults.maxHistoryItems,
+                Constants.UserDefaults.audioInputSource, Constants.UserDefaults.hasCompletedOnboarding]
+            for key in preferenceKeys where userDefaults.object(forKey: key) == nil {
+                if let value = legacy[key] { userDefaults.set(value, forKey: key) }
+            }
+        } catch { apiKeyStorageWarning = "旧配置暂时无法读取，尚未清理密钥副本，请检查文件访问权限后重试。" }
+    }
 
-        // 尝试从沙盒位置读取旧设置
-        let bundleId = Bundle.main.bundleIdentifier ?? "com.voicetranslation.macos"
-        let sandboxPlistPath = NSHomeDirectory() + "/Library/Containers/\(bundleId)/Data/Library/Preferences/\(bundleId).plist"
-
-        guard FileManager.default.fileExists(atPath: sandboxPlistPath),
-              let sandboxDefaults = NSDictionary(contentsOfFile: sandboxPlistPath) else {
-            print("📦 没有找到沙盒设置文件，跳过迁移")
-            return
-        }
-
-        print("📦 发现沙盒设置文件，开始迁移...")
-
-        // 迁移 API Key
-        if let apiKey = sandboxDefaults[Constants.UserDefaults.openAIApiKey] as? String, !apiKey.isEmpty {
-            saveStoredAPIKey(apiKey, for: Constants.UserDefaults.openAIApiKey)
-            print("✅ 已迁移 OpenAI API Key")
-        }
-
-        if let customKey = sandboxDefaults[Constants.UserDefaults.customAPIKey] as? String, !customKey.isEmpty {
-            saveStoredAPIKey(customKey, for: Constants.UserDefaults.customAPIKey)
-            print("✅ 已迁移 Custom API Key")
-        }
-
-        if let customBaseURL = sandboxDefaults[Constants.UserDefaults.customAPIBaseURL] as? String, !customBaseURL.isEmpty {
-            userDefaults.set(customBaseURL, forKey: Constants.UserDefaults.customAPIBaseURL)
-            print("✅ 已迁移 Custom API Base URL")
-        }
-
-        if let customModel = sandboxDefaults[Constants.UserDefaults.customAPIModel] as? String, !customModel.isEmpty {
-            userDefaults.set(customModel, forKey: Constants.UserDefaults.customAPIModel)
-            print("✅ 已迁移 Custom API Model")
-        }
-
-        // 迁移其他设置
-        if let provider = sandboxDefaults[Constants.UserDefaults.apiProvider] as? String {
-            userDefaults.set(provider, forKey: Constants.UserDefaults.apiProvider)
-        }
-
-        if let direction = sandboxDefaults[Constants.UserDefaults.selectedLanguageDirection] as? String {
-            userDefaults.set(direction, forKey: Constants.UserDefaults.selectedLanguageDirection)
-        }
-
-        if let audioSource = sandboxDefaults[Constants.UserDefaults.audioInputSource] as? String {
-            userDefaults.set(audioSource, forKey: Constants.UserDefaults.audioInputSource)
-        }
-
-        if let onboarding = sandboxDefaults[Constants.UserDefaults.hasCompletedOnboarding] as? Bool {
-            userDefaults.set(onboarding, forKey: Constants.UserDefaults.hasCompletedOnboarding)
-        }
-
-        userDefaults.synchronize()
-        print("✅ 设置迁移完成")
+    /// Removes only credential fields, preserving unrelated settings and plist format.
+    private func cleanupLegacyKeyCopies(for keys: Set<String>) -> Bool {
+        guard !keys.isEmpty, let url = legacyPreferencesURL,
+              FileManager.default.fileExists(atPath: url.path) else { return true }
+        do {
+            var format = PropertyListSerialization.PropertyListFormat.binary
+            guard var values = try PropertyListSerialization.propertyList(from: Data(contentsOf: url), format: &format) as? [String: Any] else { return false }
+            var changed = false
+            for key in keys {
+                for field in [key, "stored_" + key] {
+                    if values.removeValue(forKey: field) != nil { changed = true }
+                }
+            }
+            if changed {
+                let data = try PropertyListSerialization.data(fromPropertyList: values, format: format, options: 0)
+                try data.write(to: url, options: .atomic)
+            }
+            guard let saved = try PropertyListSerialization.propertyList(from: Data(contentsOf: url), format: nil) as? [String: Any] else { return false }
+            return keys.allSatisfy { saved[$0] == nil && saved["stored_" + $0] == nil }
+        } catch { return false }
     }
 
     // MARK: - UserDefaults Management
@@ -325,7 +329,11 @@ class AppSettings: ObservableObject {
             else { userDefaults.set(trimmed, forKey: oldKey) }
             return true
         }
-        if securelyStoredKeys[key] == trimmed { return true }
+        if securelyStoredKeys[key] == trimmed {
+            let cleaned = cleanupLegacyKeyCopies(for: [key])
+            if !cleaned { apiKeyStorageWarning = "旧配置中的密钥副本尚未清理成功，请检查文件访问权限后重试。" }
+            return cleaned
+        }
         let saved = trimmed.isEmpty
             ? secureStore.delete(service: keychainServiceName, account: key, allowInteraction: true)
             : secureStore.save(value: trimmed, service: keychainServiceName, account: key, allowInteraction: true)
@@ -338,8 +346,9 @@ class AppSettings: ObservableObject {
         securelyStoredKeys[key] = trimmed
         userDefaults.removeObject(forKey: oldKey)
         userDefaults.removeObject(forKey: key)
-        apiKeyStorageWarning = ""
-        return true
+        let cleaned = cleanupLegacyKeyCopies(for: [key])
+        apiKeyStorageWarning = cleaned ? "" : "旧配置中的密钥副本尚未清理成功，请检查文件访问权限后重试。"
+        return cleaned
     }
 
     /// Explicit user action may show macOS's Keychain approval after a signing change.

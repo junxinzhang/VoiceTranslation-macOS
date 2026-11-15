@@ -161,7 +161,7 @@ struct Constants {
         static let audioQualityPoor = "音频质量较差，可能影响识别准确性。"
         
         // 系统音频相关错误
-        static let systemAudioSetupFailed = "系统音频设置失败，已自动切换到麦克风模式。"
+        static let systemAudioSetupFailed = "系统音频设置失败，收音已停止；麦克风未开启。"
         static let systemAudioVersionNotSupported = "系统音频功能需要 macOS 13.0 或更高版本。"
         static let systemAudioContentAccessFailed = "虽然权限已授予，但无法访问系统音频内容。"
         static let systemAudioStreamFailed = "系统音频流启动失败。"
@@ -222,7 +222,7 @@ struct Constants {
         完成后请完全退出并重新启动应用。
         """
         
-        static let fallbackToMicrophoneMessage = "系统音频不可用，已自动切换到麦克风模式。"
+        static let fallbackToMicrophoneMessage = "系统音频不可用，收音已停止；麦克风未开启。"
         static let systemAudioRequiresNewerMacOS = "系统音频功能需要 macOS 13.0 或更高版本。"
     }
     
