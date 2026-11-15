@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.0.2 — 2026-11-16
+
+- Follow the actual macOS default microphone when Bluetooth devices connect, disconnect or switch profiles. Reconnected devices can receive new attempts immediately.
+- Keep trying after a temporarily unavailable microphone; stop only on explicit user stop or a non-retryable permission failure.
+- Keep audio preparation and retirement away from the window, and prevent old capture callbacks from feeding a replacement session.
+- Adopt the native microphone format when installing capture so an AirPods profile change does not reuse an obsolete sample rate.
+- A successful engine start alone no longer means audio is arriving. System-audio failures still do not activate the microphone.
+
+修复耳机切换和重连时的恢复，临时断连后继续等待恢复；适配耳机通话模式变化。AirPods 4 实际切换、断连、重连、手机切回 Mac 后的新语音与翻译，以及导出和退出重开均已验证。识别仍可能听错。
+
+See [release notes](docs/releases/v1.0.2.md) and [validation scope](docs/VALIDATION.md).
+
 ## v1.0.1 — 2026-11-15
 
 Security update. System-audio errors no longer switch to the microphone. Deleted history is removed from whole-conversation and resume copies; stale replies, checkpoints and suggestions cannot restore it. Legacy sandbox credential fields are removed only after confirmed Keychain storage, while unrelated settings and an unmigrated sole key are preserved.

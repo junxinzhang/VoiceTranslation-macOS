@@ -6,7 +6,7 @@ macOS 实时语音转写与英中双向翻译。可听麦克风，也可翻译�
 
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue) ![MIT](https://img.shields.io/badge/License-MIT-green) [![Build macOS](https://github.com/junxinzhang/VoiceTranslation-macOS/actions/workflows/build-macos.yml/badge.svg)](https://github.com/junxinzhang/VoiceTranslation-macOS/actions/workflows/build-macos.yml)
 
-> **v1.0.1 安装包尚未完成 Apple Developer ID 签名和 Apple 公证。** macOS 可能阻止首次打开；下载不代表已通过苹果安全认证。请先阅读[安装与安全提示](docs/guides/INSTALLATION.md)。使用翻译功能需要自己的服务密钥，服务费用由所选服务商收取。
+> **v1.0.2 安装包尚未完成 Apple Developer ID 签名和 Apple 公证。** macOS 可能阻止首次打开；下载不代表已通过苹果安全认证。请先阅读[安装与安全提示](docs/guides/INSTALLATION.md)。使用翻译功能需要自己的服务密钥，服务费用由所选服务商收取。
 
 **[下载 DMG 安装包](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest/download/VoiceTranslation.dmg)** · [ZIP 备用下载](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest/download/VoiceTranslation.app.zip) · [版本说明与校验文件](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest)
 
@@ -20,7 +20,7 @@ macOS 实时语音转写与英中双向翻译。可听麦克风，也可翻译�
 - 听错后可修改某一段原文，自动更新译文；后续识别不会覆盖手动修改。
 - 最多同时翻译两段，减少单段慢回复对后文的影响；显示剩余待译数量。
 - 暂时失败会自动补译，也可手动重试；整场文字自动保存，重开后继续补译。
-- 声音设备变化、睡眠唤醒后尝试恢复收音；显示真实收音状态。
+- 耳机切换、暂时断连和睡眠唤醒后尝试恢复收音；跟随系统当前麦克风，显示真实收音状态。
 - 历史记录、文字导出和悬浮窗。
 
 ## 安装与首次使用
