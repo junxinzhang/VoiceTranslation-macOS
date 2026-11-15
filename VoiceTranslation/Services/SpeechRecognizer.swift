@@ -25,7 +25,7 @@ class SpeechRecognizer: ObservableObject {
     private var recoveryAttempts = 0
     @Published private(set) var recordingStatus = "就绪"
     @Published private(set) var recordingPhase: RecordingPhase = .idle
-    let audioHeartbeat = AudioHeartbeat()
+    let audioHeartbeat: AudioHeartbeat
     private var startupTask: Task<Void, Never>?
     private var captureRecoveryTask: Task<Void, Never>?
     private var captureGeneration = UUID()
@@ -40,7 +40,14 @@ class SpeechRecognizer: ObservableObject {
     var requestMicrophoneAuthorization: () async -> Bool = { await AVCaptureDevice.requestAccess(for: .audio) }
     var isWaitingForMicrophonePermission: Bool { microphonePermissionSession != nil }
     private var sleeping = false
-    private var captureRecoveryAttempts = 0
+    private var captureRecoveryBackoff = CaptureRecoveryBackoff()
+    private var configurationChangeTask: Task<Void, Never>?
+    private let microphoneBuffers: MicrophoneBufferRelay
+    private var pendingMicrophonePreparations: [String: ObjectIdentifier] = [:]
+    var captureStartup: (() async throws -> Void)?
+    var waitForCaptureRetry: (TimeInterval) async throws -> Void = {
+        try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000))
+    }
     private var workspaceObservers: [NSObjectProtocol] = []
     @Published var isRecording = false
     @Published var authorizationStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
@@ -83,24 +90,27 @@ class SpeechRecognizer: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     init() {
+        let heartbeat = AudioHeartbeat()
+        audioHeartbeat = heartbeat
+        microphoneBuffers = MicrophoneBufferRelay(heartbeat: heartbeat)
         setupPermissionMonitoring()
         // 只检查权限状态，不触发请求弹窗
         checkAuthorizationStatus()
 
         // 监听音频设备变化
         audioDeviceManager.$currentInputDevice
-            .map { $0?.uid }.removeDuplicates().dropFirst()
+            .map { $0?.routeIdentity }.removeDuplicates().dropFirst()
             .debounce(for: .milliseconds(800), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, self.currentAudioInputSource == .microphone else { return }
-                self.scheduleCaptureRecovery(reason: "麦克风发生变化，正在恢复收音")
+                self.handleMicrophoneRouteChange()
             }.store(in: &cancellables)
         NotificationCenter.default.publisher(for: .AVAudioEngineConfigurationChange)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
-                guard let self, self.captureReady, let changed = notification.object as? AVAudioEngine,
+                guard let self, let changed = notification.object as? AVAudioEngine,
                       changed === self.audioEngine else { return }
-                self.scheduleCaptureRecovery(reason: "声音设备发生变化，正在恢复收音")
+                self.handleMicrophoneConfigurationChange()
             }.store(in: &cancellables)
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
@@ -114,8 +124,10 @@ class SpeechRecognizer: ObservableObject {
     }
     
     deinit {
+        microphoneBuffers.invalidate()
         startupTask?.cancel()
         captureRecoveryTask?.cancel()
+        configurationChangeTask?.cancel()
         for observer in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
         recoveryTask?.cancel()
         // deinit 是非 actor 隔离上下文，做最小同步清理，避免异步闭包持有 self
@@ -258,7 +270,8 @@ class SpeechRecognizer: ObservableObject {
         }
         isRecording = true // User intent; recordingPhase reports actual capture readiness.
         isListening = false
-        captureRecoveryAttempts = 0
+        captureRecoveryBackoff.reset()
+        pendingMicrophonePreparations.removeAll()
         launchCapture(recovering: false)
     }
 
@@ -275,11 +288,13 @@ class SpeechRecognizer: ObservableObject {
             guard let self, !Task.isCancelled,
                   self.captureGeneration == generation, self.isRecording else { return }
             do {
-                try await self.startRecognitionSession()
+                if let captureStartup = self.captureStartup { try await captureStartup() }
+                else { try await self.startRecognitionSession() }
                 guard !Task.isCancelled, self.captureGeneration == generation, self.isRecording else { return }
                 self.captureReady = true
                 self.captureStartedAt = Date()
-                self.setRecordingPhase(.waiting)
+                // Starting the engine is not proof that the microphone delivers data.
+                if self.audioHeartbeat.snapshot().bufferAt != nil { self.setRecordingPhase(.waiting) }
             } catch {
                 guard !Task.isCancelled, self.captureGeneration == generation, self.isRecording else { return }
                 self.startupTask = nil
@@ -309,6 +324,9 @@ class SpeechRecognizer: ObservableObject {
     }
 
     private func stopCaptureResources() {
+        configurationChangeTask?.cancel()
+        configurationChangeTask = nil
+        microphoneBuffers.invalidate()
         captureReady = false
         isListening = false
         recoveryTask?.cancel()
@@ -327,17 +345,14 @@ class SpeechRecognizer: ObservableObject {
             capture.stop()
         }
         systemAudioCapture = nil
-        // Even isRunning takes the engine's internal lock. A Bluetooth bind may
-        // hold that lock indefinitely, so never touch a still-preparing engine here.
-        if preparingMicrophoneEngines.contains(ObjectIdentifier(audioEngine)) {
-            audioEngine = AVAudioEngine()
-            microphoneTapInstalled = false
-        } else if audioEngine.isRunning {
-            audioEngine.stop()
-        }
-        if microphoneTapInstalled {
-            audioEngine.inputNode.removeTap(onBus: 0)
-            microphoneTapInstalled = false
+        // HAL teardown can wait for a Bluetooth profile transition. Never hold
+        // the UI thread while retiring an engine; its callbacks are already invalid.
+        let retired = audioEngine
+        let installedTap = microphoneTapInstalled
+        audioEngine = AVAudioEngine()
+        microphoneTapInstalled = false
+        if !preparingMicrophoneEngines.contains(ObjectIdentifier(retired)) {
+            Self.retireMicrophoneEngine(retired, installedTap: installedTap)
         }
         lastOutputText = ""
         lastDisplayedLength = 0
@@ -363,37 +378,81 @@ class SpeechRecognizer: ObservableObject {
         }
         guard recoveryTask == nil else { return }
         let sample = audioHeartbeat.snapshot()
+        if sample.bufferAt == nil {
+            if now.timeIntervalSince(captureStartedAt) > 8 {
+                scheduleCaptureRecovery(reason: "还未收到声音数据，正在重新连接")
+            }
+            return
+        }
         // Silent buffers are healthy. Recover only when buffers stop arriving.
         if now.timeIntervalSince(sample.bufferAt ?? captureStartedAt) > 8 {
             scheduleCaptureRecovery(reason: "声音输入已中断，正在恢复")
         } else if let soundAt = sample.soundAt, now.timeIntervalSince(soundAt) < 2 {
-            captureRecoveryAttempts = 0
+            captureRecoveryBackoff.reset()
             setRecordingPhase(.receiving)
         } else {
-            if sample.bufferAt != nil { captureRecoveryAttempts = 0 }
+            if sample.bufferAt != nil { captureRecoveryBackoff.reset() }
             setRecordingPhase(.waiting)
+        }
+    }
+
+    func handleMicrophoneRouteChange() {
+        guard isRecording, !sleeping, currentAudioInputSource == .microphone,
+              !isWaitingForMicrophonePermission else { return }
+        // A newly connected/default device gets a fresh attempt immediately, even
+        // when a previous route has already entered the slower retry interval.
+        captureRecoveryTask?.cancel()
+        captureRecoveryTask = nil
+        captureRecoveryBackoff.reset()
+        // A reconnect is a fresh opportunity even if HAL reuses the same UID/ID.
+        // Old workers remain isolated, but must not block this route's new worker.
+        pendingMicrophonePreparations.removeAll()
+        let device = audioDeviceManager.currentInputDevice?.name ?? "等待系统选择声音设备"
+        scheduleCaptureRecovery(reason: "麦克风发生变化（\(device)），正在恢复收音")
+    }
+
+    func handleMicrophoneConfigurationChange() {
+        guard isRecording, !sleeping, currentAudioInputSource == .microphone,
+              !isWaitingForMicrophonePermission else { return }
+        configurationChangeTask?.cancel()
+        let generation = captureGeneration
+        let changedAt = Date()
+        configurationChangeTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled, let self, self.isRecording, !self.sleeping,
+                  self.captureGeneration == generation else { return }
+            self.configurationChangeTask = nil
+            // Bluetooth may issue several notifications while the same engine has
+            // already resumed. Fresh buffers after the change are authoritative.
+            if let bufferAt = self.audioHeartbeat.snapshot().bufferAt, bufferAt > changedAt { return }
+            self.pendingMicrophonePreparations.removeAll()
+            self.scheduleCaptureRecovery(reason: "声音设备发生变化，正在恢复收音")
         }
     }
 
     func scheduleCaptureRecovery(reason: String) {
         guard isRecording, !sleeping, captureRecoveryTask == nil else { return }
-        captureRecoveryAttempts += 1
+        let delay = captureRecoveryBackoff.nextDelay()
         startupTask?.cancel()
         startupTask = nil
         captureGeneration = UUID()
         stopCaptureResources()
-        guard captureRecoveryAttempts <= 5 else {
-            isRecording = false
-            setRecordingPhase(.failed, message: "声音输入未能恢复，请检查设备后重新开始")
-            return
-        }
+        // A slow/disconnected device must not erase the user's recording intent.
+        // After the fast attempts, retry at a bounded slower rate until stop/permission failure.
         setRecordingPhase(.recovering, message: reason)
-        let delay = UInt64(min(captureRecoveryAttempts, 5)) * 1_000_000_000
+        let wait = waitForCaptureRetry
         captureRecoveryTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: delay)
+            do { try await wait(delay) } catch { return }
             guard !Task.isCancelled, let self, self.isRecording, !self.sleeping else { return }
             self.captureRecoveryTask = nil
             self.launchCapture(recovering: true)
+        }
+    }
+
+    nonisolated private static func retireMicrophoneEngine(_ engine: AVAudioEngine, installedTap: Bool) {
+        DispatchQueue(label: "VoiceTranslation.MicrophoneTeardown.\(UUID())").async {
+            if engine.isRunning { engine.stop() }
+            if installedTap { engine.inputNode.removeTap(onBus: 0) }
         }
     }
 
@@ -412,7 +471,8 @@ class SpeechRecognizer: ObservableObject {
     func resumeAfterWake() {
         guard sleeping, isRecording else { return }
         sleeping = false
-        captureRecoveryAttempts = 0
+        captureRecoveryBackoff.reset()
+        pendingMicrophonePreparations.removeAll()
         scheduleCaptureRecovery(reason: "电脑已唤醒，正在恢复收音")
     }
 
@@ -612,31 +672,43 @@ class SpeechRecognizer: ObservableObject {
         guard currentAudioInputSource == .microphone else { throw SystemAudioError.permissionDenied }
         try await ensureMicrophonePermission()
         let sessionID = recognitionTaskID
+        let route = audioDeviceManager.currentInputDevice?.routeIdentity ?? "no-default-input"
+        guard pendingMicrophonePreparations[route] == nil else { throw TranslationError.audioEngineError }
         // A disconnected Bluetooth route must not survive in a reused audio engine.
         audioEngine = AVAudioEngine()
         let engine = audioEngine
         let engineID = ObjectIdentifier(engine)
         preparingMicrophoneEngines.insert(engineID)
-        // Binding a Bluetooth microphone can block inside the audio driver. Keep the
-        // window responsive while that happens, then validate intent before starting.
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            // Give each attempt its own queue: a stuck old route must not block
-            // preparation of the new default device after a disconnect.
+        pendingMicrophonePreparations[route] = engineID
+        // Any HAL operation can wait for a Bluetooth profile transition, including
+        // format lookup, tap installation and start. Keep the entire preparation
+        // off the UI thread so stop, route changes and the watchdog remain usable.
+        let buffers = microphoneBuffers
+        let token = captureGeneration
+        guard let request = recognitionRequest else { throw TranslationError.audioEngineError }
+        buffers.activate(token: token) { request.append($0) }
+        let preparation: Result<Void, Error> = await withCheckedContinuation { continuation in
             DispatchQueue(label: "VoiceTranslation.MicrophonePreparation.\(UUID())").async {
-                _ = engine.inputNode
-                continuation.resume()
+                do {
+                    try Self.configureAndStartMicrophone(engine, buffers: buffers, token: token)
+                    continuation.resume(returning: .success(()))
+                } catch {
+                    Self.retireMicrophoneEngine(engine, installedTap: true)
+                    continuation.resume(returning: .failure(error))
+                }
             }
         }
         preparingMicrophoneEngines.remove(engineID)
-        try Task.checkCancellation()
-        guard isRecording, recognitionTaskID == sessionID, audioEngine === engine else { throw CancellationError() }
-        try setupMicrophoneAudioEngine()
-        try startMicrophoneEngine()
-    }
-
-    private func setupMicrophoneAudioEngine() throws {
-        try setupAudioEngine()
-        print("麦克风音频引擎设置完成")
+        if pendingMicrophonePreparations[route] == engineID { pendingMicrophonePreparations.removeValue(forKey: route) }
+        if case .failure(let error) = preparation {
+            if audioEngine === engine { audioEngine = AVAudioEngine() }
+            throw error
+        }
+        guard !Task.isCancelled, isRecording, recognitionTaskID == sessionID, audioEngine === engine else {
+            Self.retireMicrophoneEngine(engine, installedTap: true)
+            throw CancellationError()
+        }
+        microphoneTapInstalled = true
     }
 
     /// 回退到ScreenCaptureKit进行系统音频捕获
@@ -656,105 +728,24 @@ class SpeechRecognizer: ObservableObject {
         try await Task.sleep(nanoseconds: 200_000_000)
     }
 
-    private func startMicrophoneEngine() throws {
-        // 准备并启动音频引擎
-        print("准备音频引擎...")
-        
-        // 在准备之前，先重置音频引擎以清除可能的旧状态
-        if audioEngine.isRunning {
-            audioEngine.stop()
-            audioEngine.reset()
-            print("重置音频引擎")
-        }
-        
-        audioEngine.prepare()
-        
-        print("启动音频引擎...")
-        
-        // 尝试启动音频引擎，如果失败则重试一次
-        do {
-            try audioEngine.start()
-        } catch {
-            print("⚠️ 首次启动失败，错误: \(error)")
-            
-            // 如果是格式错误，尝试重新配置
-            if (error as NSError).code == -10868 {
-                print("🔧 检测到格式错误，尝试重新配置...")
-                
-                // 移除旧的tap并重新配置
-                let inputNode = audioEngine.inputNode
-                inputNode.removeTap(onBus: 0)
-                
-                // 重置引擎
-                audioEngine.reset()
-                
-                // 重新设置音频引擎
-                try setupAudioEngine()
-                
-                // 准备并重试启动
-                audioEngine.prepare()
-                try audioEngine.start()
-                print("✅ 音频引擎重新配置并启动成功")
-            } else {
-                // 其他错误直接抛出
-                throw error
-            }
-        }
-        
-        print("麦克风音频引擎启动成功")
-    }
-    
-    private func setupAudioEngine() throws {
-        print("🎤 配置麦克风音频引擎")
-        
-        // 使用麦克风输入
-        let inputNode = audioEngine.inputNode
-        let hardwareFormat = inputNode.outputFormat(forBus: 0)
-        print("硬件格式: \(hardwareFormat)")
-        
-        // 检查录音格式是否有效
-        guard hardwareFormat.sampleRate > 0 && hardwareFormat.channelCount > 0 else {
-            print("无效的录音格式: \(hardwareFormat)")
+    nonisolated private static func configureAndStartMicrophone(
+        _ engine: AVAudioEngine, buffers: MicrophoneBufferRelay, token: UUID
+    ) throws {
+        let inputNode = engine.inputNode
+        let hardwareFormat = inputNode.inputFormat(forBus: 0)
+        guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0 else {
             throw TranslationError.audioEngineError
         }
-        
-        // 在安装新tap之前，先移除可能存在的旧tap
-        inputNode.removeTap(onBus: 0)
-        print("已移除旧的音频tap")
-        
-        print("安装新的音频tap...")
-        
-        // 使用更大的缓冲区大小来减少音频处理负载
-        let bufferSize: AVAudioFrameCount = 4096  // 增加缓冲区大小
-        
-        // 创建兼容的音频格式
-        // 语音识别通常需要16kHz单声道，但我们应该使用硬件支持的格式
-        let recordingFormat: AVAudioFormat
-        
-        // 检查硬件格式并创建兼容格式
-        if let format = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                       sampleRate: hardwareFormat.sampleRate,
-                                       channels: 1,
-                                       interleaved: false) {
-            recordingFormat = format
-            print("使用音频格式: 采样率=\(recordingFormat.sampleRate)Hz, 通道数=\(recordingFormat.channelCount)")
-        } else {
-            // 如果创建格式失败，使用硬件格式
-            recordingFormat = hardwareFormat
-            print("使用硬件默认格式: \(recordingFormat)")
+        // nil adopts the node's native format at installation. A copied format can
+        // become stale when AirPods switch from playback to their 24 kHz headset
+        // profile; AVFAudio raises an uncaught exception for that mismatch.
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nil) { buffer, _ in
+            buffers.receive(buffer, token: token)
         }
-        
-        // 使用明确的格式安装tap，避免格式不匹配
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: recordingFormat) { [weak self] (buffer, when) in
-            // 检查缓冲区是否有效
-            guard buffer.frameLength > 0 else { return }
-            self?.audioHeartbeat.observe(buffer)
-            self?.recognitionRequest?.append(buffer)
-        }
-        microphoneTapInstalled = true
-        print("音频tap安装完成，缓冲区大小: \(bufferSize), 格式: \(recordingFormat)")
+        engine.prepare()
+        try engine.start()
     }
-    
+
     private func restartRecognitionTask() {
         guard isRecording, audioEngine.isRunning || isSystemAudioCaptureActive() else { return }
         recoveryTask?.cancel()
@@ -768,6 +759,7 @@ class SpeechRecognizer: ObservableObject {
         let request = SFSpeechAudioBufferRecognitionRequest()
         configureRecognitionRequest(request)
         recognitionRequest = request
+        if currentAudioInputSource == .microphone { microphoneBuffers.update { request.append($0) } }
         updateActiveSystemAudioRecognitionRequestIfNeeded(request)
         recognizedText = ""
         recognitionTask = speechRecognizer?.recognitionTask(with: request) { [weak self] result, error in
@@ -1065,5 +1057,44 @@ final class AudioHeartbeat {
             }
         }
         mark(hasSound: hasSound)
+    }
+}
+
+
+/// Retains user intent while limiting retry frequency during long Bluetooth transitions.
+struct CaptureRecoveryBackoff {
+    private(set) var attempts = 0
+    mutating func nextDelay() -> TimeInterval {
+        attempts = min(attempts + 1, 6)
+        return attempts <= 5 ? TimeInterval(attempts) : 15
+    }
+    mutating func reset() { attempts = 0 }
+}
+
+/// Old engine callbacks must neither append to a new recognition request nor fake its heartbeat.
+final class MicrophoneBufferRelay: @unchecked Sendable {
+    private let lock = NSLock()
+    private let heartbeat: AudioHeartbeat
+    private var token: UUID?
+    private var append: ((AVAudioPCMBuffer) -> Void)?
+    init(heartbeat: AudioHeartbeat) { self.heartbeat = heartbeat }
+    func activate(token: UUID, append: @escaping (AVAudioPCMBuffer) -> Void) {
+        lock.lock(); defer { lock.unlock() }
+        self.token = token
+        self.append = append
+    }
+    func update(append: @escaping (AVAudioPCMBuffer) -> Void) {
+        lock.lock(); defer { lock.unlock() }
+        if token != nil { self.append = append }
+    }
+    func invalidate() {
+        lock.lock(); defer { lock.unlock() }; token = nil; append = nil
+    }
+    @discardableResult func receive(_ buffer: AVAudioPCMBuffer, token: UUID) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard self.token == token, let append, buffer.frameLength > 0 else { return false }
+        heartbeat.observe(buffer)
+        append(buffer)
+        return true
     }
 }

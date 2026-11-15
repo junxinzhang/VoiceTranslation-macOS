@@ -1956,6 +1956,8 @@ final class MicrophonePermissionFlowTests: XCTestCase {
         XCTAssertTrue(speech.isWaitingForMicrophonePermission)
         XCTAssertTrue(speech.recordingStatus.contains("允许麦克风"))
         XCTAssertFalse(speech.isListening)
+        speech.handleMicrophoneRouteChange()
+        speech.handleMicrophoneConfigurationChange()
         speech.checkCaptureHealth(at: Date().addingTimeInterval(120))
         XCTAssertEqual(speech.recordingPhase, .starting)
         reply?.resume(returning: false)
@@ -2304,5 +2306,203 @@ private final class NamespacedSystemKeyStore: APIKeyStore {
     }
     func delete(service: String, account: String, allowInteraction: Bool) -> Bool {
         system.delete(service: namespace, account: account, allowInteraction: allowInteraction)
+    }
+}
+
+@MainActor
+final class AirPodsRecoveryRegressionTests: XCTestCase {
+    private func device(_ id: UInt32, _ uid: String, isDefault: Bool) -> AudioDeviceManager.AudioDevice {
+        .init(id: id, name: uid, uid: uid, isDefault: isDefault, manufacturer: nil)
+    }
+    func testDefaultInputChangesEvenWhenBothDevicesRemainAvailable() {
+        var devices = [device(1,"headphones",isDefault:true),device(2,"built-in",isDefault:false)]
+        let manager = AudioDeviceManager(inputDevicesProvider: { devices }, observeChanges: false)
+        XCTAssertEqual(manager.currentInputDevice?.uid,"headphones")
+        devices = [device(1,"headphones",isDefault:false),device(2,"built-in",isDefault:true)]
+        manager.refreshDevices()
+        XCTAssertEqual(manager.currentInputDevice?.uid,"built-in")
+        devices = [device(1,"headphones",isDefault:true),device(2,"built-in",isDefault:false)]
+        manager.refreshDevices()
+        XCTAssertEqual(manager.currentInputDevice?.uid,"headphones")
+    }
+    func testReconnectedHeadphonesWithSameUIDAndNewHALDeviceAreANewRoute() {
+        let previous = device(1,"headphones",isDefault:true)
+        var devices = [previous]
+        let manager = AudioDeviceManager(inputDevicesProvider: { devices }, observeChanges: false)
+        devices = [device(8,"headphones",isDefault:true)]
+        manager.refreshDevices()
+        XCTAssertEqual(manager.currentInputDevice?.uid,previous.uid)
+        XCTAssertNotEqual(manager.currentInputDevice?.routeIdentity,previous.routeIdentity)
+        XCTAssertEqual(manager.currentInputDevice?.id,8)
+    }
+    func testTransientMissingDefaultNeverForcesAnOldHeadphonePreference() {
+        var devices = [device(1,"headphones",isDefault:true),device(2,"built-in",isDefault:false)]
+        let manager = AudioDeviceManager(inputDevicesProvider: { devices }, observeChanges: false)
+        devices = [device(1,"headphones",isDefault:false),device(2,"built-in",isDefault:false)]
+        manager.refreshDevices()
+        XCTAssertNil(manager.currentInputDevice)
+        devices = [device(2,"built-in",isDefault:true)]
+        manager.refreshDevices()
+        XCTAssertEqual(manager.currentInputDevice?.uid,"built-in")
+        devices = [device(1,"headphones",isDefault:true),device(2,"built-in",isDefault:false)]
+        manager.refreshDevices()
+        XCTAssertEqual(manager.currentInputDevice?.uid,"headphones")
+    }
+    func testRecoveryKeepsUserIntentPastFiveFailuresAndEventuallyReceivesSound() async throws {
+        let speech = SpeechRecognizer()
+        speech.authorizationStatus = .authorized
+        var attempts = 0
+        let recovered = expectation(description: "Ninth capture attempt succeeds")
+        speech.waitForCaptureRetry = { _ in await Task.yield() }
+        speech.captureStartup = {
+            attempts += 1
+            if attempts <= 8 { throw TranslationError.audioEngineError }
+            speech.audioHeartbeat.mark(hasSound:true)
+            recovered.fulfill()
+        }
+        speech.startRecording()
+        await fulfillment(of:[recovered],timeout:3)
+        XCTAssertEqual(attempts,9)
+        XCTAssertTrue(speech.isRecording)
+        speech.checkCaptureHealth(at:Date())
+        XCTAssertEqual(speech.recordingPhase,.receiving)
+        speech.stopRecording()
+        let stoppedAt = attempts
+        await Task.yield()
+        XCTAssertEqual(attempts,stoppedAt)
+        XCTAssertFalse(speech.isRecording)
+    }
+    func testNewRouteInterruptsSlowRetryWithoutRevivingCancelledAttempt() async throws {
+        let speech = SpeechRecognizer()
+        speech.authorizationStatus = .authorized
+        let slow = expectation(description:"Entered slow retry")
+        let recovered = expectation(description:"New route restarted immediately")
+        var held: CheckedContinuation<Void, Error>?
+        var delays: [TimeInterval] = []
+        speech.captureStartup = { throw TranslationError.audioEngineError }
+        speech.waitForCaptureRetry = { delay in
+            delays.append(delay)
+            if delay==15 {
+                try await withCheckedThrowingContinuation { held=$0;slow.fulfill() }
+            } else { await Task.yield() }
+        }
+        speech.startRecording()
+        await fulfillment(of:[slow],timeout:3)
+        XCTAssertTrue(speech.isRecording)
+        speech.captureStartup = { speech.audioHeartbeat.mark(hasSound:true); recovered.fulfill() }
+        speech.handleMicrophoneRouteChange()
+        await fulfillment(of:[recovered],timeout:3)
+        held?.resume(throwing:CancellationError())
+        XCTAssertEqual(delays.last,1)
+        XCTAssertTrue(speech.isRecording)
+        speech.stopRecording()
+    }
+    func testPendingRetryDoesNotRetainRecorderOrRestartAfterOwnerRelease() async throws {
+        var speech: SpeechRecognizer? = SpeechRecognizer()
+        weak var released = speech
+        let waiting = expectation(description:"Retry is waiting")
+        var starts = 0
+        speech?.isRecording = true
+        speech?.captureStartup = { starts += 1 }
+        speech?.waitForCaptureRetry = { _ in
+            waiting.fulfill()
+            try await Task.sleep(nanoseconds:5_000_000_000)
+        }
+        speech?.scheduleCaptureRecovery(reason:"Disconnected")
+        await fulfillment(of:[waiting],timeout:2)
+        speech=nil
+        await Task.yield()
+        XCTAssertNil(released)
+        try await Task.sleep(nanoseconds:100_000_000)
+        XCTAssertEqual(starts,0)
+    }
+    func testStartedEngineWithoutBuffersDoesNotClaimListening() async throws {
+        let speech = SpeechRecognizer()
+        speech.authorizationStatus = .authorized
+        let started = expectation(description:"Driver start returned without audio")
+        speech.captureStartup = { started.fulfill() }
+        speech.startRecording()
+        await fulfillment(of:[started],timeout:2)
+        XCTAssertTrue(speech.isRecording)
+        XCTAssertFalse(speech.isListening)
+        XCTAssertEqual(speech.recordingPhase,.starting)
+        speech.checkCaptureHealth(at:Date().addingTimeInterval(10))
+        XCTAssertEqual(speech.recordingPhase,.recovering)
+        speech.stopRecording()
+    }
+    func testConfigurationBurstDoesNotRestartEngineThatAlreadyDeliversFreshBuffers() async throws {
+        let speech = SpeechRecognizer()
+        speech.authorizationStatus = .authorized
+        var attempts = 0
+        let started = expectation(description:"First capture ready")
+        speech.captureStartup = { attempts += 1; speech.audioHeartbeat.mark(hasSound:true); started.fulfill() }
+        speech.startRecording()
+        await fulfillment(of:[started],timeout:2)
+        for _ in 0..<4 { speech.handleMicrophoneConfigurationChange() }
+        speech.audioHeartbeat.mark(hasSound:true,at:Date().addingTimeInterval(0.1))
+        try await Task.sleep(nanoseconds:1_200_000_000)
+        XCTAssertEqual(attempts,1)
+        XCTAssertTrue(speech.isRecording)
+        speech.stopRecording()
+    }
+    func testRouteChangesCannotStartMicrophoneWhenSystemAudioWasChosenOrUserStopped() async throws {
+        let speech = SpeechRecognizer()
+        speech.setAudioInputSource(.systemAudio)
+        speech.isRecording = true
+        var starts = 0
+        speech.captureStartup = { starts += 1 }
+        speech.handleMicrophoneRouteChange()
+        speech.handleMicrophoneConfigurationChange()
+        speech.stopRecording()
+        speech.handleMicrophoneRouteChange()
+        try await Task.sleep(nanoseconds:1_100_000_000)
+        XCTAssertEqual(starts,0)
+        XCTAssertFalse(speech.isRecording)
+        XCTAssertEqual(speech.selectedAudioInputSource,.systemAudio)
+    }
+}
+
+final class MicrophoneBufferRelayTests: XCTestCase {
+    private func buffer() -> AVAudioPCMBuffer {
+        let format = AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:16000,channels:1,interleaved:false)!
+        let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:160)!
+        buffer.frameLength=160
+        for i in 0..<160 { buffer.floatChannelData![0][i]=0.1 }
+        return buffer
+    }
+    func testOldEngineCannotFeedNewRequestOrFakeRecoveryHeartbeat() {
+        let heartbeat=AudioHeartbeat(), relay=MicrophoneBufferRelay(heartbeat:heartbeat)
+        let old=UUID(), new=UUID()
+        var oldFrames=0,newFrames=0
+        relay.activate(token:old) { _ in oldFrames += 1 }
+        XCTAssertTrue(relay.receive(buffer(),token:old))
+        relay.invalidate();heartbeat.reset()
+        relay.activate(token:new) { _ in newFrames += 1 }
+        XCTAssertFalse(relay.receive(buffer(),token:old))
+        XCTAssertNil(heartbeat.snapshot().bufferAt)
+        XCTAssertEqual(newFrames,0)
+        XCTAssertTrue(relay.receive(buffer(),token:new))
+        XCTAssertEqual(oldFrames,1);XCTAssertEqual(newFrames,1)
+        XCTAssertNotNil(heartbeat.snapshot().soundAt)
+    }
+    func testRecognitionRequestReplacementKeepsOnlyCurrentSinkAndStopRejectsAllBuffers() {
+        let heartbeat=AudioHeartbeat(),relay=MicrophoneBufferRelay(heartbeat:heartbeat),token=UUID()
+        var before=0,after=0
+        relay.activate(token:token) { _ in before += 1 }
+        relay.receive(buffer(),token:token)
+        relay.update { _ in after += 1 }
+        relay.receive(buffer(),token:token)
+        XCTAssertEqual(before,1);XCTAssertEqual(after,1)
+        relay.invalidate();heartbeat.reset()
+        relay.update { _ in after += 1 }
+        XCTAssertFalse(relay.receive(buffer(),token:token))
+        XCTAssertEqual(after,1);XCTAssertNil(heartbeat.snapshot().bufferAt)
+    }
+    func testLongDisconnectionRetriesStayRateLimitedAndNewRouteGetsFastDelay() {
+        var backoff=CaptureRecoveryBackoff()
+        let delays=(0..<100).map { _ in backoff.nextDelay() }
+        XCTAssertEqual(Array(delays.prefix(5)),[1,2,3,4,5])
+        XCTAssertTrue(delays.dropFirst(5).allSatisfy { $0==15 })
+        backoff.reset();XCTAssertEqual(backoff.nextDelay(),1)
     }
 }

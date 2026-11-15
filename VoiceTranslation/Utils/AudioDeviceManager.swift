@@ -14,8 +14,8 @@ class AudioDeviceManager: ObservableObject {
     @Published var availableInputDevices: [AudioDevice] = []
     @Published var currentInputDevice: AudioDevice?
     
-    // 记录用户手动选择的设备
-    private var userSelectedDeviceUID: String?
+    private let inputDevicesProvider: (() -> [AudioDevice])?
+    private var deviceListeners: [(AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
     
     struct AudioDevice: Identifiable, Equatable {
         let id: AudioDeviceID
@@ -24,6 +24,8 @@ class AudioDeviceManager: ObservableObject {
         let isDefault: Bool
         let manufacturer: String?
         
+        var routeIdentity: String { "\(uid):\(id)" }
+
         var displayName: String {
             if isDefault {
                 return "\(name) (默认)"
@@ -32,94 +34,26 @@ class AudioDeviceManager: ObservableObject {
         }
     }
     
-    init() {
+    init(inputDevicesProvider: (() -> [AudioDevice])? = nil, observeChanges: Bool = true) {
+        self.inputDevicesProvider = inputDevicesProvider
         refreshDevices()
-        setupNotifications()
+        if observeChanges { setupNotifications() }
+    }
+
+    deinit {
+        for (address, block) in deviceListeners {
+            var address = address
+            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, block)
+        }
     }
     
     func refreshDevices() {
-        availableInputDevices = getInputDevices()
-        
-        // 过滤掉虚拟音频设备和有问题的设备
-        let filteredDevices = availableInputDevices.filter { device in
-            // 排除已知的虚拟设备
-            let virtualDevices = ["Microsoft Teams Audio", "WeMeet Audio Device", "ZoomAudioDevice"]
-            let isVirtual = virtualDevices.contains { device.name.contains($0) }
-            
-            if isVirtual {
-                print("⚠️ 跳过虚拟音频设备: \(device.name)")
-                return false
-            }
-            return true
-        }
-        
-        // 如果用户之前手动选择了设备，优先使用
-        if let userSelectedUID = userSelectedDeviceUID,
-           let userDevice = filteredDevices.first(where: { $0.uid == userSelectedUID }) {
-            print("🎯 恢复用户选择的设备: \(userDevice.name)")
-            currentInputDevice = userDevice
-            setAudioInputDevice(userDevice)
-            return
-        }
-        
-        // 如果当前有设备且仍然可用，保持不变
-        if let current = currentInputDevice,
-           filteredDevices.contains(where: { $0.uid == current.uid }) {
-            print("📌 保持当前设备: \(current.name)")
-            return
-        }
-        
-        // Respect the microphone already chosen in System Settings. Recreating a view/service
-        // must not switch a deliberately selected built-in/USB microphone back to AirPods.
-        if let defaultDevice = filteredDevices.first(where: { $0.isDefault }) {
-            currentInputDevice = defaultDevice
-            return
-        }
-
-        // 只在没有当前设备时自动选择
-        // 优先选择顺序：
-        // 1. AirPods (用户常用的无线耳机)
-        // 2. USB 音频设备 (如 Logi)
-        // 3. MacBook Pro 麦克风（当输出为内置扬声器时）
-        // 4. 其他默认设备
-        
-        if let airpods = filteredDevices.first(where: { 
-            $0.name.contains("AirPods") 
-        }) {
-            print("🎧 发现 AirPods: \(airpods.name)")
-            currentInputDevice = airpods
-            setAudioInputDevice(airpods)
-        } else if let logiDevice = filteredDevices.first(where: { 
-            $0.name.contains("Logi") || $0.name.contains("H340") || $0.name.contains("USB")
-        }) {
-            print("🎧 自动选择 USB 音频设备: \(logiDevice.name)")
-            currentInputDevice = logiDevice
-            setAudioInputDevice(logiDevice)
-        } else if let macbookMic = filteredDevices.first(where: { 
-            $0.name.contains("MacBook") && $0.name.contains("麦克风")
-        }) {
-            // 检查当前输出设备是否为 MacBook Pro 扬声器
-            if isOutputDeviceMacBookSpeaker() {
-                print("🎤 选择 MacBook Pro 麦克风（输出为内置扬声器）")
-                currentInputDevice = macbookMic
-                setAudioInputDevice(macbookMic)
-            } else {
-                print("⚠️ MacBook Pro 麦克风需要输出设备为内置扬声器才能正常工作")
-                // 尝试切换输出设备
-                if setOutputToMacBookSpeaker() {
-                    currentInputDevice = macbookMic
-                    setAudioInputDevice(macbookMic)
-                }
-            }
-        } else if let defaultDevice = filteredDevices.first(where: { $0.isDefault }) {
-            print("📱 使用默认设备: \(defaultDevice.name)")
-            currentInputDevice = defaultDevice
-        }
-        
-        // 更新可用设备列表供 UI 显示
-        availableInputDevices = filteredDevices
+        availableInputDevices = inputDevicesProvider?() ?? getInputDevices()
+        // Follow the actual system default, including changes that leave the device
+        // inventory unchanged. Never push a stale Bluetooth preference back into HAL.
+        currentInputDevice = availableInputDevices.first { $0.isDefault }
     }
-    
+
     private func getInputDevices() -> [AudioDevice] {
         var devices: [AudioDevice] = []
         
@@ -290,7 +224,6 @@ class AudioDeviceManager: ObservableObject {
     
     func selectDevice(_ device: AudioDevice) {
         print("👤 用户手动选择设备: \(device.name)")
-        userSelectedDeviceUID = device.uid
         currentInputDevice = device
         setAudioInputDevice(device)
     }
@@ -320,43 +253,19 @@ class AudioDeviceManager: ObservableObject {
     }
     
     private func setupNotifications() {
-        // 在macOS上监听音频设备变化
-        var propertyAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        
-        // 设置音频设备变化监听器
-        let listenerProc: AudioObjectPropertyListenerProc = { _, _, _, _ in
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: Notification.Name("AudioDevicesChanged"), object: nil)
+        for selector in [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultInputDevice,
+                         kAudioHardwarePropertyDefaultOutputDevice] {
+            var address = AudioObjectPropertyAddress(mSelector: selector,
+                mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+            let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.refreshDevices() }
             }
-            return noErr
-        }
-        
-        AudioObjectAddPropertyListener(
-            AudioObjectID(kAudioObjectSystemObject),
-            &propertyAddress,
-            listenerProc,
-            nil
-        )
-        
-        // 监听设备变化通知
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleDeviceChange),
-            name: Notification.Name("AudioDevicesChanged"),
-            object: nil
-        )
-    }
-    
-    @objc private func handleDeviceChange() {
-        Task { @MainActor in
-            refreshDevices()
+            if AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, block) == noErr {
+                deviceListeners.append((address, block))
+            }
         }
     }
-    
+
     // MARK: - Output Device Management
     
     /// 检查当前输出设备是否为 MacBook 扬声器
