@@ -1,0 +1,103 @@
+name: Bug Report
+description: 报告可复现问题，帮助快速 triage 和修复
+title: "[Bug] "
+labels:
+  - bug
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请尽量提供可复现信息。修复分支建议使用 `fix/<scope>-<short>`；生产紧急修复使用 `hotfix/<scope>-<short>`。
+
+  - type: input
+    id: summary
+    attributes:
+      label: 问题摘要 / Summary
+      description: 一句话说明问题现象与影响
+      placeholder: 例如：切换输入设备后应用偶发崩溃
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: 严重级别 / Severity
+      options:
+        - blocker（阻塞发布/主流程不可用）
+        - major（核心功能受影响）
+        - minor（有 workaround）
+    validations:
+      required: true
+
+  - type: input
+    id: scope
+    attributes:
+      label: 影响模块 / Scope
+      description: 建议与分支中的 `<scope>` 对齐
+      placeholder: audio-capture / subtitle / translation-engine
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境信息 / Environment
+      description: macOS、App 版本、设备信息
+      placeholder: |
+        macOS 14.6
+        App commit: abc1234
+        Device: MacBook Pro M3
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce_steps
+    attributes:
+      label: 复现步骤 / Steps to Reproduce
+      placeholder: |
+        1. 打开应用
+        2. 切换到外接麦克风
+        3. 点击 Start
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: 期望结果 / Expected Behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: 实际结果 / Actual Behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 日志与截图 / Logs & Screenshots
+      description: 贴日志片段、崩溃栈、截图或录屏链接
+      placeholder: https://...
+
+  - type: input
+    id: expected_branch_name
+    attributes:
+      label: 预期分支名 / Expected Branch Name
+      description: 格式：`fix/<scope>-<short>` 或 `hotfix/<scope>-<short>`
+      placeholder: fix/audio-capture-device-switch-crash
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前检查 / Checklist
+      options:
+        - label: 我已搜索过重复 issue
+          required: true
+        - label: 我已提供可复现步骤与环境信息
+          required: true

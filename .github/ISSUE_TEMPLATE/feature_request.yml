@@ -1,0 +1,91 @@
+name: Feature Request
+description: 提出新功能或改进建议，便于评估优先级与实现路径
+title: "[Feature] "
+labels:
+  - enhancement
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        新功能分支建议：`feat/<scope>-<short>`；纯工程维护可用 `chore/<scope>-<short>`。
+
+  - type: input
+    id: summary
+    attributes:
+      label: 需求摘要 / Summary
+      description: 一句话说明要做什么
+      placeholder: 例如：增加实时字幕字体大小设置
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 当前问题 / Problem
+      description: 不做会带来什么成本或体验问题
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 方案建议 / Proposed Solution
+      description: 期望行为、关键交互、技术方向
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 备选方案 / Alternatives
+      description: 可选，不同方案的 tradeoff
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: 验收标准 / Acceptance Criteria
+      placeholder: |
+        - [ ] 可以在设置中调整字幕字号
+        - [ ] 重启后保留设置
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 优先级 / Priority
+      options:
+        - P0（必须尽快）
+        - P1（本迭代）
+        - P2（可排期）
+    validations:
+      required: true
+
+  - type: input
+    id: scope
+    attributes:
+      label: 影响模块 / Scope
+      description: 建议与分支中的 `<scope>` 对齐
+      placeholder: settings / subtitle / translation-engine
+    validations:
+      required: true
+
+  - type: input
+    id: expected_branch_name
+    attributes:
+      label: 预期分支名 / Expected Branch Name
+      description: 格式：`feat/<scope>-<short>`（或 `chore/<scope>-<short>`）
+      placeholder: feat/subtitle-adjustable-font-size
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前检查 / Checklist
+      options:
+        - label: 我已确认这不是已有功能/重复 issue
+          required: true
+        - label: 我已提供可验收标准
+          required: true

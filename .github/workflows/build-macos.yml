@@ -1,0 +1,148 @@
+name: Build macOS
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Check public source safety
+        run: |
+          python3 scripts/check_public_source.py
+          python3 scripts/test_public_source.py
+
+      - name: Run tests without live service credentials
+        run: bash scripts/test.sh
+
+      - name: Build Release app (ad-hoc signed)
+        env:
+          PROJECT_NAME: VoiceTranslation
+          SCHEME_NAME: VoiceTranslation
+          BUILD_DIR: ${{ github.workspace }}/build
+          DERIVED_DATA: ${{ github.workspace }}/build/DerivedData
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+
+          XCODE_EXTRA_ARGS=("ONLY_ACTIVE_ARCH=NO")
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            TAG_VERSION="${REF_NAME#v}"
+            BUILD_NO="$(date +%Y%m%d%H%M)"
+            echo "Using tag-driven version: $TAG_VERSION ($BUILD_NO)"
+            if [[ ! "$TAG_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
+              echo "error: tag must be a numeric version, for example v1.2.3"
+              exit 1
+            fi
+            XCODE_EXTRA_ARGS+=("MARKETING_VERSION=$TAG_VERSION" "CURRENT_PROJECT_VERSION=$BUILD_NO")
+          fi
+
+          xcodebuild build \
+            -project "${PROJECT_NAME}.xcodeproj" \
+            -scheme "${SCHEME_NAME}" \
+            -configuration Release \
+            -destination "generic/platform=macOS" \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            ENABLE_HARDENED_RUNTIME=NO \
+            "ARCHS=x86_64 arm64" \
+            "${XCODE_EXTRA_ARGS[@]}"
+
+          APP_PATH="$(find "$DERIVED_DATA/Build/Products/Release" -name "${PROJECT_NAME}.app" -type d | head -n 1)"
+          if [[ -z "$APP_PATH" ]]; then
+            echo "error: ${PROJECT_NAME}.app not found after build"
+            exit 1
+          fi
+
+          echo "Verifying Universal Binary architectures:"
+          lipo -info "$APP_PATH/Contents/MacOS/${PROJECT_NAME}"
+
+          echo "App signing summary:"
+          codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -E "Identifier=|Signature=|TeamIdentifier="
+
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Package DMG and ZIP
+        env:
+          PROJECT_NAME: VoiceTranslation
+          BUILD_DIR: ${{ github.workspace }}/build
+        run: |
+          set -euo pipefail
+
+          APP_PATH="${APP_PATH:?APP_PATH not set}"
+          STAGING_DIR="$BUILD_DIR/dmg_staging"
+
+          mkdir -p "$STAGING_DIR"
+          cp -R "$APP_PATH" "$STAGING_DIR/"
+          ln -s /Applications "$STAGING_DIR/Applications"
+
+          hdiutil create \
+            -volname "Voice Translation" \
+            -srcfolder "$STAGING_DIR" \
+            -ov \
+            -format UDZO \
+            "$BUILD_DIR/${PROJECT_NAME}.dmg"
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP_PATH" "$BUILD_DIR/${PROJECT_NAME}.app.zip"
+
+          ls -lh "$BUILD_DIR"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceTranslation-macos-${{ github.sha }}
+          path: |
+            build/VoiceTranslation.dmg
+            build/VoiceTranslation.app.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: VoiceTranslation-macos-${{ github.sha }}
+          path: build
+      - name: Publish tagged assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" build/VoiceTranslation.dmg build/VoiceTranslation.app.zip --clobber
+          else
+            gh release create "$TAG_NAME" build/VoiceTranslation.dmg build/VoiceTranslation.app.zip --title "$TAG_NAME" --generate-notes
+          fi

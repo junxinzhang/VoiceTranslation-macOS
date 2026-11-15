@@ -1,0 +1,663 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		F11400000000000000000001 /* TranslationContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11400000000000000000002; };
+		F11300000000000000000001 /* LiveTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11300000000000000000002; };
+		A1234567890ABCD0 /* VoiceTranslationApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABCE0 /* VoiceTranslationApp.swift */; };
+		A1234567890ABCF0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABD00 /* ContentView.swift */; };
+		A1234567890ABD10 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABD20 /* MainView.swift */; };
+		A1234567890ABD30 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABD40 /* SettingsView.swift */; };
+		A1234567890ABD50 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABD60 /* HistoryView.swift */; };
+		A1234567890ABD70 /* MainViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABD80 /* MainViewModel.swift */; };
+		A1234567890ABD90 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABDA0 /* SettingsViewModel.swift */; };
+		A1234567890ABDB0 /* SpeechRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABDC0 /* SpeechRecognizer.swift */; };
+		A1234567890ABDD0 /* TranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABDE0 /* TranslationService.swift */; };
+		A1234567890ABDF0 /* HistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABE00 /* HistoryManager.swift */; };
+		A1234567890ABE10 /* TranslationRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABE20 /* TranslationRecord.swift */; };
+		A1234567890ABE30 /* LanguageDirection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABE40 /* LanguageDirection.swift */; };
+		A1234567890ABE50 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABE60 /* AppSettings.swift */; };
+		A1234567890ABE70 /* ErrorHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABE80 /* ErrorHandler.swift */; };
+		A1234567890ABE90 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABEA0 /* Constants.swift */; };
+		A1234567890ABEB0 /* AudioInputSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABEC1 /* AudioInputSource.swift */; };
+		A1234567890ABEC2 /* SystemAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABEC3 /* SystemAudioCapture.swift */; };
+		A1234567890ABEC9 /* CoreAudioTapCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABECA /* CoreAudioTapCapture.swift */; };
+		A1234567890ABED1 /* AudioQualityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABEC4 /* AudioQualityMonitor.swift */; };
+		A1234567890ABED2 /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABEC5 /* PermissionManager.swift */; };
+		A1234567890ABED3 /* AudioQualityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABEC6 /* AudioQualityView.swift */; };
+		A1234567890ABED4 /* PermissionGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABEC7 /* PermissionGuideView.swift */; };
+		A1234567890ABED5 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABEC8 /* OnboardingView.swift */; };
+		F1234567890A0001 /* FloatingOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1234567890A0002 /* FloatingOverlayView.swift */; };
+		F1234567890A0003 /* FloatingOverlayWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1234567890A0004 /* FloatingOverlayWindowController.swift */; };
+		A250B5542EE986A000B41588 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A250B5532EE986A000B41588 /* Assets.xcassets */; };
+		AFC2FD3521C57D9716C0AE01 /* AudioDeviceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01EE065FE04C79B726EB503C /* AudioDeviceManager.swift */; };
+		EBE68BC15361762EF044AE30 /* APIProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B926F62A92396AAF94FD0DC5 /* APIProvider.swift */; };
+		F2345678901A0001 /* TranslationEntryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2345678901A0002 /* TranslationEntryModel.swift */; };
+		C1234567890B0001 /* BuiltInKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1234567890B0002 /* BuiltInKeys.swift */; };
+			D1000000000A0001 /* ChatSuggestion.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000A0002 /* ChatSuggestion.swift */; };
+			D1000000000B0001 /* SuggestionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000B0002 /* SuggestionService.swift */; };
+			D1000000000C0001 /* ChatSuggestionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000C0002 /* ChatSuggestionsView.swift */; };
+			D1000000000D0001 /* TTSService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000D0002 /* TTSService.swift */; };
+			E200000000000001 /* MainViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000011 /* MainViewModelTests.swift */; };
+			E200000000000002 /* ModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000012 /* ModelTests.swift */; };
+			E200000000000003 /* FloatingOverlayWindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000013 /* FloatingOverlayWindowControllerTests.swift */; };
+			E200000000000004 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E200000000000014 /* XCTest.framework */; };
+	/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+			E200000000000024 /* PBXContainerItemProxy */ = {
+				isa = PBXContainerItemProxy;
+				containerPortal = A1234567890ABC30 /* Project object */;
+				proxyType = 1;
+				remoteGlobalIDString = A1234567890ABCA0;
+				remoteInfo = VoiceTranslation;
+			};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		F11400000000000000000002 /* TranslationContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationContext.swift; sourceTree = "<group>"; };
+		F11300000000000000000002 /* LiveTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscript.swift; sourceTree = "<group>"; };
+		01EE065FE04C79B726EB503C /* AudioDeviceManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudioDeviceManager.swift; sourceTree = "<group>"; };
+		A1234567890ABCB0 /* VoiceTranslation.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceTranslation.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1234567890ABCE0 /* VoiceTranslationApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTranslationApp.swift; sourceTree = "<group>"; };
+		A1234567890ABD00 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A1234567890ABD20 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
+		A1234567890ABD40 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A1234567890ABD60 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		A1234567890ABD80 /* MainViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewModel.swift; sourceTree = "<group>"; };
+		A1234567890ABDA0 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
+		A1234567890ABDC0 /* SpeechRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognizer.swift; sourceTree = "<group>"; };
+		A1234567890ABDE0 /* TranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationService.swift; sourceTree = "<group>"; };
+		A1234567890ABE00 /* HistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryManager.swift; sourceTree = "<group>"; };
+		A1234567890ABE20 /* TranslationRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationRecord.swift; sourceTree = "<group>"; };
+		A1234567890ABE40 /* LanguageDirection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageDirection.swift; sourceTree = "<group>"; };
+		A1234567890ABE60 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		A1234567890ABE80 /* ErrorHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorHandler.swift; sourceTree = "<group>"; };
+		A1234567890ABEA0 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
+		A1234567890ABEC0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1234567890ABEC1 /* AudioInputSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputSource.swift; sourceTree = "<group>"; };
+		A1234567890ABEC3 /* SystemAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCapture.swift; sourceTree = "<group>"; };
+		A1234567890ABECA /* CoreAudioTapCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreAudioTapCapture.swift; sourceTree = "<group>"; };
+		A1234567890ABEC4 /* AudioQualityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioQualityMonitor.swift; sourceTree = "<group>"; };
+		A1234567890ABEC5 /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
+		A1234567890ABEC6 /* AudioQualityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioQualityView.swift; sourceTree = "<group>"; };
+		A1234567890ABEC7 /* PermissionGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionGuideView.swift; sourceTree = "<group>"; };
+		A1234567890ABEC8 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		F1234567890A0002 /* FloatingOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingOverlayView.swift; sourceTree = "<group>"; };
+		F1234567890A0004 /* FloatingOverlayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingOverlayWindowController.swift; sourceTree = "<group>"; };
+		A1234567890ABED0 /* VoiceTranslation.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VoiceTranslation.entitlements; sourceTree = "<group>"; };
+		A250B5532EE986A000B41588 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B926F62A92396AAF94FD0DC5 /* APIProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = APIProvider.swift; sourceTree = "<group>"; };
+		F2345678901A0002 /* TranslationEntryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationEntryModel.swift; sourceTree = "<group>"; };
+		C1234567890B0002 /* BuiltInKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuiltInKeys.swift; sourceTree = "<group>"; };
+			D1000000000A0002 /* ChatSuggestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSuggestion.swift; sourceTree = "<group>"; };
+			D1000000000B0002 /* SuggestionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionService.swift; sourceTree = "<group>"; };
+			D1000000000D0002 /* TTSService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSService.swift; sourceTree = "<group>"; };
+			D1000000000C0002 /* ChatSuggestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSuggestionsView.swift; sourceTree = "<group>"; };
+			E200000000000010 /* VoiceTranslationTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceTranslationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+			E200000000000011 /* MainViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModels/MainViewModelTests.swift; sourceTree = "<group>"; };
+			E200000000000012 /* ModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/ModelTests.swift; sourceTree = "<group>"; };
+			E200000000000013 /* FloatingOverlayWindowControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/FloatingOverlayWindowControllerTests.swift; sourceTree = "<group>"; };
+			E200000000000014 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+	/* End PBXFileReference section */
+
+	/* Begin PBXFrameworksBuildPhase section */
+			A1234567890ABC80 /* Frameworks */ = {
+				isa = PBXFrameworksBuildPhase;
+				buildActionMask = 2147483647;
+				files = (
+				);
+				runOnlyForDeploymentPostprocessing = 0;
+			};
+			E200000000000022 /* Frameworks */ = {
+				isa = PBXFrameworksBuildPhase;
+				buildActionMask = 2147483647;
+				files = (
+					E200000000000004 /* XCTest.framework in Frameworks */,
+				);
+				runOnlyForDeploymentPostprocessing = 0;
+			};
+	/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+			A1234567890ABC20 = {
+				isa = PBXGroup;
+				children = (
+					A1234567890ABCD1 /* VoiceTranslation */,
+					E200000000000015 /* VoiceTranslationTests */,
+					E200000000000016 /* Frameworks */,
+					A1234567890ABCC0 /* Products */,
+				);
+				sourceTree = "<group>";
+			};
+			A1234567890ABCC0 /* Products */ = {
+				isa = PBXGroup;
+				children = (
+					A1234567890ABCB0 /* VoiceTranslation.app */,
+					E200000000000010 /* VoiceTranslationTests.xctest */,
+				);
+				name = Products;
+				sourceTree = "<group>";
+			};
+		A1234567890ABCD1 /* VoiceTranslation */ = {
+			isa = PBXGroup;
+			children = (
+				A1234567890ABEF0 /* App */,
+				A1234567890ABF00 /* Views */,
+				A1234567890ABF10 /* ViewModels */,
+				A1234567890ABF20 /* Services */,
+				A1234567890ABF30 /* Models */,
+				A1234567890ABF40 /* Utils */,
+				A1234567890ABF50 /* Resources */,
+				A1234567890ABED0 /* VoiceTranslation.entitlements */,
+			);
+			path = VoiceTranslation;
+			sourceTree = "<group>";
+		};
+		A1234567890ABEF0 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A1234567890ABCE0 /* VoiceTranslationApp.swift */,
+				A1234567890ABD00 /* ContentView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A1234567890ABF00 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A1234567890ABD20 /* MainView.swift */,
+				A1234567890ABD40 /* SettingsView.swift */,
+				A1234567890ABD60 /* HistoryView.swift */,
+				A1234567890ABEC6 /* AudioQualityView.swift */,
+				A1234567890ABEC7 /* PermissionGuideView.swift */,
+				A1234567890ABEC8 /* OnboardingView.swift */,
+				F1234567890A0002 /* FloatingOverlayView.swift */,
+				D1000000000C0002 /* ChatSuggestionsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A1234567890ABF10 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				A1234567890ABD80 /* MainViewModel.swift */,
+				A1234567890ABDA0 /* SettingsViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		A1234567890ABF20 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				A1234567890ABDC0 /* SpeechRecognizer.swift */,
+				F11300000000000000000002 /* LiveTranscript.swift */,
+				A1234567890ABDE0 /* TranslationService.swift */,
+				A1234567890ABE00 /* HistoryManager.swift */,
+				A1234567890ABEC3 /* SystemAudioCapture.swift */,
+				A1234567890ABECA /* CoreAudioTapCapture.swift */,
+				A1234567890ABEC4 /* AudioQualityMonitor.swift */,
+				A1234567890ABEC5 /* PermissionManager.swift */,
+				F1234567890A0004 /* FloatingOverlayWindowController.swift */,
+				D1000000000B0002 /* SuggestionService.swift */,
+				D1000000000D0002 /* TTSService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		A1234567890ABF30 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A1234567890ABE20 /* TranslationRecord.swift */,
+				F11400000000000000000002 /* TranslationContext.swift */,
+				A1234567890ABE40 /* LanguageDirection.swift */,
+				A1234567890ABE60 /* AppSettings.swift */,
+				A1234567890ABEC1 /* AudioInputSource.swift */,
+				B926F62A92396AAF94FD0DC5 /* APIProvider.swift */,
+				F2345678901A0002 /* TranslationEntryModel.swift */,
+				D1000000000A0002 /* ChatSuggestion.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A1234567890ABF40 /* Utils */ = {
+			isa = PBXGroup;
+			children = (
+				A1234567890ABE80 /* ErrorHandler.swift */,
+				A1234567890ABEA0 /* Constants.swift */,
+				01EE065FE04C79B726EB503C /* AudioDeviceManager.swift */,
+				C1234567890B0002 /* BuiltInKeys.swift */,
+			);
+			path = Utils;
+			sourceTree = "<group>";
+		};
+			A1234567890ABF50 /* Resources */ = {
+				isa = PBXGroup;
+				children = (
+					A250B5532EE986A000B41588 /* Assets.xcassets */,
+					A1234567890ABEC0 /* Info.plist */,
+				);
+				path = Resources;
+				sourceTree = "<group>";
+			};
+			E200000000000015 /* VoiceTranslationTests */ = {
+				isa = PBXGroup;
+				children = (
+					E200000000000011 /* MainViewModelTests.swift */,
+					E200000000000012 /* ModelTests.swift */,
+					E200000000000013 /* FloatingOverlayWindowControllerTests.swift */,
+				);
+				path = VoiceTranslationTests;
+				sourceTree = "<group>";
+			};
+			E200000000000016 /* Frameworks */ = {
+				isa = PBXGroup;
+				children = (
+					E200000000000014 /* XCTest.framework */,
+				);
+				name = Frameworks;
+				sourceTree = "<group>";
+			};
+	/* End PBXGroup section */
+
+	/* Begin PBXNativeTarget section */
+			A1234567890ABCA0 /* VoiceTranslation */ = {
+				isa = PBXNativeTarget;
+			buildConfigurationList = A1234567890ABF60 /* Build configuration list for PBXNativeTarget "VoiceTranslation" */;
+			buildPhases = (
+				A1234567890ABC70 /* Sources */,
+				A1234567890ABC80 /* Frameworks */,
+				A1234567890ABC90 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VoiceTranslation;
+			productName = VoiceTranslation;
+				productReference = A1234567890ABCB0 /* VoiceTranslation.app */;
+				productType = "com.apple.product-type.application";
+			};
+			E200000000000041 /* VoiceTranslationTests */ = {
+				isa = PBXNativeTarget;
+				buildConfigurationList = E200000000000033 /* Build configuration list for PBXNativeTarget "VoiceTranslationTests" */;
+				buildPhases = (
+					E200000000000021 /* Sources */,
+					E200000000000022 /* Frameworks */,
+					E200000000000023 /* Resources */,
+				);
+				buildRules = (
+				);
+				dependencies = (
+					E200000000000025 /* PBXTargetDependency */,
+				);
+				name = VoiceTranslationTests;
+				productName = VoiceTranslationTests;
+				productReference = E200000000000010 /* VoiceTranslationTests.xctest */;
+				productType = "com.apple.product-type.bundle.unit-test";
+			};
+	/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A1234567890ABC30 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					A1234567890ABCA0 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					E200000000000041 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = A1234567890ABCA0;
+					};
+				};
+			};
+			buildConfigurationList = A1234567890ABC60 /* Build configuration list for PBXProject "VoiceTranslation" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = zh;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				zh,
+			);
+			mainGroup = A1234567890ABC20;
+			productRefGroup = A1234567890ABCC0 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A1234567890ABCA0 /* VoiceTranslation */,
+				E200000000000041 /* VoiceTranslationTests */,
+			);
+		};
+/* End PBXProject section */
+
+	/* Begin PBXResourcesBuildPhase section */
+			A1234567890ABC90 /* Resources */ = {
+				isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A250B5542EE986A000B41588 /* Assets.xcassets in Resources */,
+				);
+				runOnlyForDeploymentPostprocessing = 0;
+			};
+			E200000000000023 /* Resources */ = {
+				isa = PBXResourcesBuildPhase;
+				buildActionMask = 2147483647;
+				files = (
+				);
+				runOnlyForDeploymentPostprocessing = 0;
+			};
+	/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A1234567890ABC70 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1234567890ABCF0 /* ContentView.swift in Sources */,
+				A1234567890ABD10 /* MainView.swift in Sources */,
+				A1234567890ABD30 /* SettingsView.swift in Sources */,
+				A1234567890ABD50 /* HistoryView.swift in Sources */,
+				A1234567890ABD70 /* MainViewModel.swift in Sources */,
+				A1234567890ABD90 /* SettingsViewModel.swift in Sources */,
+				A1234567890ABDB0 /* SpeechRecognizer.swift in Sources */,
+				F11300000000000000000001 /* LiveTranscript.swift in Sources */,
+				A1234567890ABDD0 /* TranslationService.swift in Sources */,
+				A1234567890ABDF0 /* HistoryManager.swift in Sources */,
+				A1234567890ABE10 /* TranslationRecord.swift in Sources */,
+				F11400000000000000000001 /* TranslationContext.swift in Sources */,
+				A1234567890ABE30 /* LanguageDirection.swift in Sources */,
+				A1234567890ABE50 /* AppSettings.swift in Sources */,
+				A1234567890ABE70 /* ErrorHandler.swift in Sources */,
+				A1234567890ABE90 /* Constants.swift in Sources */,
+				A1234567890ABEB0 /* AudioInputSource.swift in Sources */,
+				A1234567890ABEC2 /* SystemAudioCapture.swift in Sources */,
+				A1234567890ABEC9 /* CoreAudioTapCapture.swift in Sources */,
+				A1234567890ABCD0 /* VoiceTranslationApp.swift in Sources */,
+				EBE68BC15361762EF044AE30 /* APIProvider.swift in Sources */,
+				AFC2FD3521C57D9716C0AE01 /* AudioDeviceManager.swift in Sources */,
+				A1234567890ABED1 /* AudioQualityMonitor.swift in Sources */,
+				A1234567890ABED2 /* PermissionManager.swift in Sources */,
+				A1234567890ABED3 /* AudioQualityView.swift in Sources */,
+				A1234567890ABED4 /* PermissionGuideView.swift in Sources */,
+				A1234567890ABED5 /* OnboardingView.swift in Sources */,
+				F1234567890A0001 /* FloatingOverlayView.swift in Sources */,
+				F1234567890A0003 /* FloatingOverlayWindowController.swift in Sources */,
+				F2345678901A0001 /* TranslationEntryModel.swift in Sources */,
+				C1234567890B0001 /* BuiltInKeys.swift in Sources */,
+				D1000000000A0001 /* ChatSuggestion.swift in Sources */,
+				D1000000000B0001 /* SuggestionService.swift in Sources */,
+				D1000000000D0001 /* TTSService.swift in Sources */,
+				D1000000000C0001 /* ChatSuggestionsView.swift in Sources */,
+				);
+				runOnlyForDeploymentPostprocessing = 0;
+			};
+			E200000000000021 /* Sources */ = {
+				isa = PBXSourcesBuildPhase;
+				buildActionMask = 2147483647;
+				files = (
+					E200000000000003 /* FloatingOverlayWindowControllerTests.swift in Sources */,
+					E200000000000002 /* ModelTests.swift in Sources */,
+					E200000000000001 /* MainViewModelTests.swift in Sources */,
+				);
+				runOnlyForDeploymentPostprocessing = 0;
+			};
+	/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+			E200000000000025 /* PBXTargetDependency */ = {
+				isa = PBXTargetDependency;
+				target = A1234567890ABCA0 /* VoiceTranslation */;
+				targetProxy = E200000000000024 /* PBXContainerItemProxy */;
+			};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A1234567890ABF70 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A1234567890ABF80 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		A1234567890ABF90 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = VoiceTranslation/VoiceTranslation.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VoiceTranslation/Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "语音翻译";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.voicetranslation.macos;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+			A1234567890ABFA0 /* Release */ = {
+				isa = XCBuildConfiguration;
+				buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = VoiceTranslation/VoiceTranslation.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VoiceTranslation/Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "语音翻译";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.voicetranslation.macos;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				};
+				name = Release;
+			};
+			E200000000000031 /* Debug */ = {
+				isa = XCBuildConfiguration;
+				buildSettings = {
+					BUNDLE_LOADER = "$(TEST_HOST)";
+					CODE_SIGN_STYLE = Automatic;
+					CURRENT_PROJECT_VERSION = 1;
+					GENERATE_INFOPLIST_FILE = YES;
+					LD_RUNPATH_SEARCH_PATHS = (
+						"$(inherited)",
+						"@executable_path/../Frameworks",
+						"@loader_path/../Frameworks",
+					);
+					MACOSX_DEPLOYMENT_TARGET = 12.0;
+					PRODUCT_BUNDLE_IDENTIFIER = com.voicetranslation.macos.tests;
+					PRODUCT_NAME = "$(TARGET_NAME)";
+					SWIFT_VERSION = 5.0;
+					TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VoiceTranslation.app/Contents/MacOS/VoiceTranslation";
+				};
+				name = Debug;
+			};
+			E200000000000032 /* Release */ = {
+				isa = XCBuildConfiguration;
+				buildSettings = {
+					BUNDLE_LOADER = "$(TEST_HOST)";
+					CODE_SIGN_STYLE = Automatic;
+					CURRENT_PROJECT_VERSION = 1;
+					GENERATE_INFOPLIST_FILE = YES;
+					LD_RUNPATH_SEARCH_PATHS = (
+						"$(inherited)",
+						"@executable_path/../Frameworks",
+						"@loader_path/../Frameworks",
+					);
+					MACOSX_DEPLOYMENT_TARGET = 12.0;
+					PRODUCT_BUNDLE_IDENTIFIER = com.voicetranslation.macos.tests;
+					PRODUCT_NAME = "$(TARGET_NAME)";
+					SWIFT_VERSION = 5.0;
+					TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VoiceTranslation.app/Contents/MacOS/VoiceTranslation";
+				};
+				name = Release;
+			};
+	/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A1234567890ABC60 /* Build configuration list for PBXProject "VoiceTranslation" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1234567890ABF70 /* Debug */,
+				A1234567890ABF80 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+			A1234567890ABF60 /* Build configuration list for PBXNativeTarget "VoiceTranslation" */ = {
+				isa = XCConfigurationList;
+				buildConfigurations = (
+					A1234567890ABF90 /* Debug */,
+					A1234567890ABFA0 /* Release */,
+				);
+				defaultConfigurationIsVisible = 0;
+				defaultConfigurationName = Release;
+			};
+			E200000000000033 /* Build configuration list for PBXNativeTarget "VoiceTranslationTests" */ = {
+				isa = XCConfigurationList;
+				buildConfigurations = (
+					E200000000000031 /* Debug */,
+					E200000000000032 /* Release */,
+				);
+				defaultConfigurationIsVisible = 0;
+				defaultConfigurationName = Debug;
+			};
+	/* End XCConfigurationList section */
+	};
+	rootObject = A1234567890ABC30 /* Project object */;
+}
