@@ -1,5 +1,7 @@
 # 使用说明
 
+尚未安装时，先看[下载、安装与安全提示](INSTALLATION.md)。当前安装包尚未完成 Apple Developer ID 签名和公证。
+
 ## 开始前
 
 1. 在“设置”选择服务，填写自己的密钥。自定义服务需要完整的 Chat Completions 地址（通常以 `/v1/chat/completions` 结尾）及支持的模型名。

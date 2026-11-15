@@ -2,11 +2,15 @@
 
 macOS 实时语音转写与英中双向翻译。可听麦克风，也可翻译电脑正在播放的会议、视频和课程。
 
-[English](README.en.md) · [使用说明](docs/guides/USER_GUIDE.md) · [隐私说明](PRIVACY.md) · [贡献指南](CONTRIBUTING.md) · [MIT License](LICENSE) · [实测记录](docs/VALIDATION.md)
+[English](README.en.md) · [使用说明](docs/guides/USER_GUIDE.md) · [隐私说明](PRIVACY.md) · [贡献指南](CONTRIBUTING.md) · [MIT License](LICENSE) · [实测记录](docs/VALIDATION.md) · [安装说明](docs/guides/INSTALLATION.md)
 
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue) ![MIT](https://img.shields.io/badge/License-MIT-green) [![Build macOS](https://github.com/junxinzhang/VoiceTranslation-macOS/actions/workflows/build-macos.yml/badge.svg)](https://github.com/junxinzhang/VoiceTranslation-macOS/actions/workflows/build-macos.yml)
 
-> 首个公开版本目前以源码发布。你需要一台 Mac、完整 Xcode，以及自己的翻译服务密钥。服务费用由所选服务商收取。
+> **v1.0.0 安装包尚未完成 Apple Developer ID 签名和 Apple 公证。** macOS 可能阻止首次打开；下载不代表已通过苹果安全认证。请先阅读[安装与安全提示](docs/guides/INSTALLATION.md)。使用翻译功能需要自己的服务密钥，服务费用由所选服务商收取。
+
+**[下载 DMG 安装包](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest/download/VoiceTranslation.dmg)** · [ZIP 备用下载](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest/download/VoiceTranslation.app.zip) · [版本说明与校验文件](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest)
+
+同一个安装包包含 Apple Silicon 和 Intel 两种架构；最低要求 macOS 13。Intel 和所有旧系统版本尚未逐一实机验证。
 
 ## 能做什么
 
@@ -23,7 +27,7 @@ macOS 实时语音转写与英中双向翻译。可听麦克风，也可翻译�
 
 需要 **macOS 13 或更新版本**。系统音频在 macOS 14.2 及以上优先使用 Core Audio Tap，较早版本使用 ScreenCaptureKit；设备、权限和系统版本会影响实际表现。
 
-1. 当前请按下面的步骤从源码构建，在 Xcode 中运行，或将构建出的应用放入“应用程序”。未来的正式安装包会在 [Releases](https://github.com/junxinzhang/VoiceTranslation-macOS/releases) 发布；自动构建产物仅供测试。
+1. 从上面的下载入口获取 DMG，打开后将应用拖入“应用程序”，推出安装镜像，再从“应用程序”打开。遇到安全提示时，按[安装说明](docs/guides/INSTALLATION.md)核对来源；不想使用未公证安装包时，可以按下文从源码构建。
 2. 首次打开后允许麦克风和语音识别。系统音频模式还可能需要“屏幕与系统音频录制”权限，按应用提示操作。
 3. 在“设置”填写自己的 API Key。支持 OpenAI 和兼容 Chat Completions 的自定义服务；填写完整接口地址和模型名称，然后测试连接。
 4. 选择语言方向及声音来源，点击“开始翻译”。结束时点击“停止翻译”。

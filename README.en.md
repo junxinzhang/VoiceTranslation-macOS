@@ -4,7 +4,11 @@ Live transcription and English–Chinese translation for macOS, using microphone
 
 [中文](README.md) · [Validation notes](docs/VALIDATION.md) · [Privacy](PRIVACY.md) · [Contributing](CONTRIBUTING.md) · [MIT License](LICENSE)
 
-> The initial public version is source-first. You need a Mac, full Xcode and your own translation-service credentials. Provider charges are your responsibility.
+> **The v1.0.0 binaries have NOT been signed with an Apple Developer ID or notarized by Apple.** macOS may block first launch. Read the [installation and safety notes](docs/guides/INSTALLATION.md#english) before downloading. Translation requires your own service credentials and any applicable provider charges.
+
+**[Download DMG](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest/download/VoiceTranslation.dmg)** · [ZIP alternative](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest/download/VoiceTranslation.app.zip) · [Release notes and checksums](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest)
+
+One universal package contains Apple Silicon and Intel code and targets macOS 13+. Intel hardware and every older supported OS version have not been individually tested.
 
 ## Features
 
@@ -20,7 +24,7 @@ Live transcription and English–Chinese translation for macOS, using microphone
 
 macOS 13 or later. System audio prefers Core Audio Tap on macOS 14.2+ and uses ScreenCaptureKit on earlier supported versions. Results depend on your system, permissions, and audio devices.
 
-Build from source using the steps below. Future distribution packages will be published under [Releases](https://github.com/junxinzhang/VoiceTranslation-macOS/releases); automated build artifacts are for testing. Open the app, grant microphone and speech-recognition access, and follow prompts for system audio access when needed. Configure your own OpenAI key or an OpenAI-compatible Chat Completions endpoint, model, and key in Settings. Select the language direction and audio input, then start translation.
+Download the DMG above, drag the app to Applications, eject the disk image and open the app from Applications. Follow the [installation notes](docs/guides/INSTALLATION.md#english) if macOS blocks it, or build from reviewed source below. Open the app, grant microphone and speech-recognition access, and follow prompts for system audio access when needed. Configure your own OpenAI key or an OpenAI-compatible Chat Completions endpoint, model, and key in Settings. Select the language direction and audio input, then start translation.
 
 **Public builds contain no service credentials or free quota.** Speech recognition may use Apple's online services. Transcripts, relevant glossary terms, and enabled conversation context are sent to the translation service you choose. Read [PRIVACY.md](PRIVACY.md) before use.
 

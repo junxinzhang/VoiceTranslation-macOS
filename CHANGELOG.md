@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.0.0 — 2026-11-15
+
+First downloadable macOS release. Universal DMG and app ZIP packages include checksums. These binaries use ad-hoc signing, not an Apple Developer ID, and have NOT been notarized by Apple.
+
+- Added direct download links and bilingual installation/safety instructions.
+- Added checksum generation and draft-first release preparation; published releases are not overwritten automatically.
+- Kept the microphone, system-audio, recognition and translation behavior from the validated public snapshot.
+
+See [release notes](docs/releases/v1.0.0.md) and [installation instructions](docs/guides/INSTALLATION.md).
+
 ## Initial public source snapshot — 2026-11-15
 
 This repository starts from a clean source snapshot with a new Git history. No service credentials or local conversation data are distributed. This is a source publication, not an Apple-notarized binary release.
