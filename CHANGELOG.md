@@ -5,6 +5,7 @@
 First downloadable macOS release. Universal DMG and app ZIP packages include checksums. These binaries use ad-hoc signing, not an Apple Developer ID, and have NOT been notarized by Apple.
 
 - Added direct download links and bilingual installation/safety instructions.
+- Aligned the declared and compiled minimum macOS version with the documented macOS 13 requirement.
 - Added checksum generation and draft-first release preparation; published releases are not overwritten automatically.
 - Kept the microphone, system-audio, recognition and translation behavior from the validated public snapshot.
 

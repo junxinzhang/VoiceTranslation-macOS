@@ -85,6 +85,19 @@ jobs:
           echo "App signing summary:"
           codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -E "Identifier=|Signature=|TeamIdentifier="
 
+          MIN_OS="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP_PATH/Contents/Info.plist")"
+          BUNDLE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
+          if [[ "$MIN_OS" != "13.0" ]]; then
+            echo "error: packaged minimum macOS does not match documented macOS 13.0"
+            exit 1
+          fi
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            if [[ "$BUNDLE_VERSION" != "$TAG_VERSION" ]]; then
+              echo "error: packaged version does not match release tag"
+              exit 1
+            fi
+          fi
+
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
       - name: Package DMG and ZIP
