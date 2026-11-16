@@ -4,7 +4,7 @@ Live transcription and English–Chinese translation for macOS, using microphone
 
 [中文](README.md) · [Validation notes](docs/VALIDATION.md) · [Privacy](PRIVACY.md) · [Contributing](CONTRIBUTING.md) · [MIT License](LICENSE)
 
-> **The v1.0.2 binaries have NOT been signed with an Apple Developer ID or notarized by Apple.** macOS may block first launch. Read the [installation and safety notes](docs/guides/INSTALLATION.md#english) before downloading. Translation requires your own service credentials and any applicable provider charges.
+> **The v1.0.3 binaries have NOT been signed with an Apple Developer ID or notarized by Apple.** macOS may block first launch. Read the [installation and safety notes](docs/guides/INSTALLATION.md#english) before downloading. Translation requires your own service credentials and any applicable provider charges.
 
 **[Download DMG](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest/download/VoiceTranslation.dmg)** · [ZIP alternative](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest/download/VoiceTranslation.app.zip) · [Release notes and checksums](https://github.com/junxinzhang/VoiceTranslation-macOS/releases/latest)
 
@@ -14,7 +14,8 @@ One universal package contains Apple Silicon and Intel code and targets macOS 13
 
 - Microphone and system audio input, including system audio while speakers are muted.
 - Short answers, natural phrase boundaries, streaming translations, and updated translations when recognition changes.
-- A glossary that assists recognition of names and specialist terms and keeps translations consistent; optional previous-line context.
+- Common glossary, session vocabulary, and explicitly saved word corrections assist name/term recognition and translation consistency; optional previous-line context.
+- Conservative checks for numbers, amounts, dates, units, and known terms. Suspect translations get one context-free retry, then stay marked for review instead of displaying unverified text.
 - Edit a misheard original and translate it again. Later recognition cannot overwrite a manual edit.
 - Up to two independent translation streams so one slow response does not block all later lines; rows remain in spoken order and show a pending count.
 - Automatic retry for temporary failures, manual backfill, whole-conversation text saving and recovery after reopening.

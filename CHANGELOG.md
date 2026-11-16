@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0.3 — 2026-11-16
+
+- Add conservative checks for numbers, signs, currency, dates, time, units and preferred names/terms; withhold suspect replies, retry once without prior context, then persist a review state. Recognition mistakes still require source verification.
+- Add session vocabulary that takes priority over the common glossary, survives reopening with saved history and clears for new conversations.
+- Add explicit short name/term correction memory, recognition hints and user-confirmed suggestions. Manual edits remain protected; numeric edits never become reusable substitution rules.
+- Fix false review warnings for currency symbols, shared preferred aliases and Latin terms touching Chinese prose. Document local storage, provider requests, review states and their limitations.
+- Release remains ad-hoc signed and is not Apple Developer ID signed or notarized. See the validation record for the actual acceptance scope.
+
 ## v1.0.2 — 2026-11-16
 
 - Follow the actual macOS default microphone when Bluetooth devices connect, disconnect or switch profiles. Reconnected devices can receive new attempts immediately.
