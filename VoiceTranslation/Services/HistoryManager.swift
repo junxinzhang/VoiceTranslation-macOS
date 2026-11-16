@@ -63,13 +63,18 @@ class HistoryManager: ObservableObject {
         guard deletionStateReadable, !removed.conversations.contains(conversation.id) else { return }
         var conversation = conversation
         conversation.lines.removeAll { removed.records.contains($0.id) }
-        guard let directory = conversationDirectory, !conversation.lines.isEmpty || !conversation.draft.isEmpty else { return }
+        guard let directory = conversationDirectory else { return }
+        let existing = directory.appendingPathComponent("\(conversation.id).json")
+        // Clearing a names-only scene must overwrite its old metadata, not leave
+        // an active pointer that restores the removed names next launch.
+        guard conversation.hasContent || FileManager.default.fileExists(atPath: existing.path) else { return }
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let data = try JSONEncoder().encode(conversation)
             try data.write(to: directory.appendingPathComponent("\(conversation.id).json"), options: .atomic)
             if active { try data.write(to: directory.appendingPathComponent("active.json"), options: .atomic) }
-            if let i = savedConversations.firstIndex(where: { $0.id == conversation.id }) { savedConversations[i] = conversation }
+            if !conversation.hasContent { savedConversations.removeAll { $0.id == conversation.id } }
+            else if let i = savedConversations.firstIndex(where: { $0.id == conversation.id }) { savedConversations[i] = conversation }
             else { savedConversations.insert(conversation, at: 0) }
             saveError = ""
         } catch { saveError = "本次内容暂未保存成功，请保留窗口并检查磁盘空间。" }
@@ -83,7 +88,7 @@ class HistoryManager: ObservableObject {
             var saved = try JSONDecoder().decode(SavedConversation.self, from: Data(contentsOf: url))
             guard !removed.conversations.contains(saved.id) else { return nil }
             saved.lines.removeAll { removed.records.contains($0.id) }
-            return saved.lines.isEmpty && saved.draft.isEmpty ? nil : saved
+            return saved.hasContent ? saved : nil
         }
         catch { saveError = "上次内容暂时无法读取，原文件已保留。"; return nil }
     }
@@ -104,7 +109,7 @@ class HistoryManager: ObservableObject {
                     var saved = try JSONDecoder().decode(SavedConversation.self, from: Data(contentsOf: url))
                     guard !removed.conversations.contains(saved.id) else { return nil }
                     saved.lines.removeAll { removed.records.contains($0.id) }
-                    return saved.lines.isEmpty && saved.draft.isEmpty ? nil : saved
+                    return saved.hasContent ? saved : nil
                 }
                 catch { saveError = "部分历史内容暂时无法读取，原文件已保留。"; return nil }
             }.sorted { $0.startedAt > $1.startedAt }
@@ -201,7 +206,7 @@ class HistoryManager: ObservableObject {
             for url in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) where url.pathExtension == "json" {
                 var saved = try JSONDecoder().decode(SavedConversation.self, from: Data(contentsOf: url))
                 saved.lines.removeAll { removed.records.contains($0.id) }
-                if removed.conversations.contains(saved.id) || (saved.lines.isEmpty && saved.draft.isEmpty) {
+                if removed.conversations.contains(saved.id) || !saved.hasContent {
                     try FileManager.default.removeItem(at: url)
                 } else {
                     try JSONEncoder().encode(saved).write(to: url, options: .atomic)
@@ -308,8 +313,10 @@ struct SavedConversation: Codable, Identifiable {
     var lines: [TranslationSession]
     var draft: String
     var draftDirection: LanguageDirection
+    var sessionTerms: [GlossaryTerm]? = nil
+    var hasContent: Bool { !lines.isEmpty || !draft.isEmpty || !(sessionTerms ?? []).isEmpty }
 
-    var title: String { String((lines.first?.originalText ?? draft).prefix(45)) }
+    var title: String { String((lines.first?.originalText ?? (draft.isEmpty && !(sessionTerms ?? []).isEmpty ? "本场名单" : draft)).prefix(45)) }
     var unfinishedCount: Int { lines.filter { !$0.isCompleted }.count + (draft.isEmpty ? 0 : 1) }
     var searchText: String { lines.map { $0.originalText + " " + $0.translatedText }.joined(separator: " ") + " " + draft }
 }

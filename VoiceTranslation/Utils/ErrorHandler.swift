@@ -17,6 +17,7 @@ enum TranslationError: LocalizedError {
     case audioEngineError
     case invalidResponse
     case rateLimitExceeded
+    case factsNeedReview(String)
     
     var errorDescription: String? {
         switch self {
@@ -36,6 +37,8 @@ enum TranslationError: LocalizedError {
             return "收到了无效的响应格式。"
         case .rateLimitExceeded:
             return "API 调用频率超限，请稍后再试。"
+        case .factsNeedReview(let message):
+            return "需要核对原文和译文：\(message)"
         }
     }
     
@@ -57,6 +60,8 @@ enum TranslationError: LocalizedError {
             return "服务可能暂时不可用，请稍后重试。"
         case .rateLimitExceeded:
             return "您的 API 调用次数已达到限制，请等待一段时间后再试。"
+        case .factsNeedReview:
+            return "请核对原文中的数字、日期、单位或名称，再点击补译；未核对的译文不会保存为完成结果。"
         }
     }
 }

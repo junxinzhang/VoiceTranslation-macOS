@@ -68,6 +68,7 @@ class TranslationService: ObservableObject {
         guard LiveTranscript.isMeaningful(source), !isTranslating, !Task.isCancelled else { return }
         generation += 1
         let run = generation
+        let reference = context
         isTranslating = true
         translatedText = ""
         error = nil
@@ -78,38 +79,57 @@ class TranslationService: ObservableObject {
             guard !appSettings.currentAPIKey.isEmpty else {
                 throw Failure(error: .apiKeyMissing, retryable: false)
             }
-            let request = try createOpenAIRequest(text: source, direction: direction, apiKey: appSettings.currentAPIKey)
-            let (bytes, response) = try await session.bytes(for: request)
-            guard let response = response as? HTTPURLResponse else {
-                throw Failure(error: .invalidResponse, retryable: true)
-            }
-            guard response.statusCode == 200 else { throw Self.failure(for: response) }
-            var complete = false
-            for try await line in bytes.lines {
-                try Task.checkCancellation()
-                guard generation == run else { return }
-                guard line.hasPrefix("data:") else { continue }
-                let payload = line.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
-                if payload == "[DONE]" { complete = true; break }
-                guard let data = payload.data(using: .utf8),
-                      let chunk = try? JSONDecoder().decode(OpenAIResponse.self, from: data) else {
+            for attempt in 0...1 {
+                translatedText = ""
+                var attemptContext = reference
+                if attempt == 1 { attemptContext.recent = [] }
+                let request = try createOpenAIRequest(text: source, direction: direction, apiKey: appSettings.currentAPIKey, reference: attemptContext)
+                let (bytes, response) = try await session.bytes(for: request)
+                guard let response = response as? HTTPURLResponse else {
                     throw Failure(error: .invalidResponse, retryable: true)
                 }
-                if let part = chunk.choices.first?.delta?.content { translatedText += part }
-                if let finish = chunk.choices.first?.finish_reason {
-                    guard finish == "stop" else {
-                        throw Failure(error: .networkError("这段翻译未完成，正在尝试补译。"), retryable: true)
+                guard response.statusCode == 200 else { throw Self.failure(for: response) }
+                var complete = false
+                var candidate = ""
+                // Sensitive replies remain provisional until the complete reply is checked.
+                let canStream = !TranslationIntegrity.containsFacts(source) && reference.recent.isEmpty && reference.terms.isEmpty
+                for try await line in bytes.lines {
+                    try Task.checkCancellation()
+                    guard generation == run else { return }
+                    guard line.hasPrefix("data:") else { continue }
+                    let payload = line.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if payload == "[DONE]" { complete = true; break }
+                    guard let data = payload.data(using: .utf8),
+                          let chunk = try? JSONDecoder().decode(OpenAIResponse.self, from: data) else {
+                        throw Failure(error: .invalidResponse, retryable: true)
                     }
-                    complete = true
-                    break
+                    if let part = chunk.choices.first?.delta?.content {
+                        candidate += part
+                        if canStream, TranslationIntegrity.warnings(source: source, translation: candidate).isEmpty { translatedText = candidate }
+                    }
+                    if let finish = chunk.choices.first?.finish_reason {
+                        guard finish == "stop" else {
+                            throw Failure(error: .networkError("这段翻译未完成，正在尝试补译。"), retryable: true)
+                        }
+                        complete = true
+                        break
+                    }
                 }
+                try Task.checkCancellation()
+                guard generation == run else { return }
+                guard complete, !candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw Failure(error: .networkError("翻译回复中断或为空。"), retryable: true)
+                }
+                let warnings = TranslationIntegrity.warnings(source: source, translation: candidate, terms: reference.terms, direction: direction)
+                if !warnings.isEmpty {
+                    translatedText = ""
+                    if attempt == 0 { continue }
+                    throw Failure(error: .factsNeedReview(warnings.joined(separator: "；")), retryable: false)
+                }
+                translatedText = candidate
+                fullTranslatedText += translatedText
+                break
             }
-            try Task.checkCancellation()
-            guard generation == run else { return }
-            guard complete, !translatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw Failure(error: .networkError("翻译回复中断或为空。"), retryable: true)
-            }
-            fullTranslatedText += translatedText
         } catch {
             guard generation == run else { return }
             if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
@@ -122,7 +142,7 @@ class TranslationService: ObservableObject {
         }
     }
 
-    func createOpenAIRequest(text: String, direction: LanguageDirection, apiKey: String) throws -> URLRequest {
+    func createOpenAIRequest(text: String, direction: LanguageDirection, apiKey: String, reference: TranslationContext? = nil) throws -> URLRequest {
         guard let url = URL(string: appSettings.currentAPIBaseURL),
               ["https", "http"].contains(url.scheme?.lowercased() ?? "") else {
             throw Failure(error: .networkError("翻译服务地址不正确，请检查设置。"), retryable: false)
@@ -133,7 +153,7 @@ class TranslationService: ObservableObject {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let user = direction == .englishToChinese ? "Translate to Chinese: \(text)" : "翻译成英文: \(text)"
-        let system = direction.prompt + context.instruction(for: text, direction: direction)
+        let system = direction.prompt + "\n" + TranslationIntegrity.instruction + (reference ?? context).instruction(for: text, direction: direction)
         let body = OpenAIRequest(model: appSettings.currentModel,
             messages: [Message(role: "system", content: system), Message(role: "user", content: user)],
             stream: true,

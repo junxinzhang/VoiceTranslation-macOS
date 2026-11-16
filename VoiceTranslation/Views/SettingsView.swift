@@ -10,8 +10,10 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: SettingsViewModel
+    private let conversation: MainViewModel?
     
-    init(appSettings: AppSettings, translationService: TranslationService) {
+    init(appSettings: AppSettings, translationService: TranslationService, conversation: MainViewModel? = nil) {
+        self.conversation = conversation
         self._viewModel = StateObject(wrappedValue: SettingsViewModel(
             appSettings: appSettings,
             translationService: translationService
@@ -26,6 +28,8 @@ struct SettingsView: View {
                     VStack(spacing: Constants.UI.padding * 2) {
                         // API 配置部分
                         apiConfigurationSection
+                        if let conversation { SessionVocabularyEditor(conversation: conversation) }
+                        CorrectionMemoryList(settings: viewModel.appSettings)
                         if !viewModel.appSettings.apiKeyStorageWarning.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(viewModel.appSettings.apiKeyStorageWarning)
@@ -493,3 +497,57 @@ struct SettingsView_Previews: PreviewProvider {
     }
 }
 #endif
+
+@MainActor
+private struct SessionVocabularyEditor: View {
+    @ObservedObject var conversation: MainViewModel
+    @State private var draft: String
+    init(conversation: MainViewModel) {
+        self.conversation = conversation
+        _draft = State(initialValue: Glossary.text(conversation.sessionGlossary))
+    }
+    var body: some View {
+        GroupBox("本场名单") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("填写这场会议的人名、公司、产品和专业词，每行：英文 = 中文。本场同名词优先于通用术语。")
+                    .font(.caption).foregroundColor(.secondary)
+                TextEditor(text: $draft).frame(height: 100).accessibilityLabel("本场名单")
+                HStack {
+                    Button("保存本场名单") { _ = conversation.saveSessionGlossary(draft) }
+                    Text(conversation.vocabularyMessage).font(.caption)
+                }
+                Text("开启历史时，重开会保留本场名单；清空内容开始新场次后不沿用。")
+                    .font(.caption).foregroundColor(.secondary)
+            }.padding(8)
+        }
+    }
+}
+
+@MainActor
+private struct CorrectionMemoryList: View {
+    @ObservedObject var settings: AppSettings
+    var body: some View {
+        GroupBox("纠错记忆") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("修改原文时可选择记住人名或专业词。记忆只辅助识别、提供建议，不会自行替换原文，也不会覆盖手动修改。")
+                    .font(.caption).foregroundColor(.secondary)
+                if settings.recognitionCorrections.isEmpty {
+                    Text("尚未保存纠错记忆").foregroundColor(.secondary)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(settings.recognitionCorrections) { memory in
+                                HStack {
+                                    Text("\(memory.heard) → \(memory.preferred)")
+                                    Spacer()
+                                    Button("忘记") { settings.recognitionCorrections.removeAll { $0.id == memory.id } }
+                                        .accessibilityLabel("忘记纠正：\(memory.heard)")
+                                }.font(.caption)
+                            }
+                        }
+                    }.frame(maxHeight: 140)
+                }
+            }.padding(8)
+        }
+    }
+}

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F11600000000000000000001 /* TranslationIntegrity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11600000000000000000002 /* TranslationIntegrity.swift */; };
 		F11400000000000000000001 /* TranslationContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11400000000000000000002; };
 		F11300000000000000000001 /* LiveTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11300000000000000000002; };
 		A1234567890ABCD0 /* VoiceTranslationApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1234567890ABCE0 /* VoiceTranslationApp.swift */; };
@@ -60,6 +61,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		F11600000000000000000002 /* TranslationIntegrity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationIntegrity.swift; sourceTree = "<group>"; };
 		F11400000000000000000002 /* TranslationContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationContext.swift; sourceTree = "<group>"; };
 		F11300000000000000000002 /* LiveTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscript.swift; sourceTree = "<group>"; };
 		01EE065FE04C79B726EB503C /* AudioDeviceManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudioDeviceManager.swift; sourceTree = "<group>"; };
@@ -215,6 +217,7 @@
 			children = (
 				A1234567890ABE20 /* TranslationRecord.swift */,
 				F11400000000000000000002 /* TranslationContext.swift */,
+				F11600000000000000000002 /* TranslationIntegrity.swift */,
 				A1234567890ABE40 /* LanguageDirection.swift */,
 				A1234567890ABE60 /* AppSettings.swift */,
 				A1234567890ABEC1 /* AudioInputSource.swift */,
@@ -374,6 +377,7 @@
 				A1234567890ABDF0 /* HistoryManager.swift in Sources */,
 				A1234567890ABE10 /* TranslationRecord.swift in Sources */,
 				F11400000000000000000001 /* TranslationContext.swift in Sources */,
+				F11600000000000000000001 /* TranslationIntegrity.swift in Sources */,
 				A1234567890ABE30 /* LanguageDirection.swift in Sources */,
 				A1234567890ABE50 /* AppSettings.swift in Sources */,
 				A1234567890ABE70 /* ErrorHandler.swift in Sources */,
@@ -544,7 +548,7 @@
 				CODE_SIGN_ENTITLEMENTS = VoiceTranslation/VoiceTranslation.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 11;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VoiceTranslation/Resources/Info.plist;
@@ -554,7 +558,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.voicetranslation.macos;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -569,7 +573,7 @@
 				CODE_SIGN_ENTITLEMENTS = VoiceTranslation/VoiceTranslation.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 11;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VoiceTranslation/Resources/Info.plist;
@@ -579,7 +583,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.voicetranslation.macos;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -592,7 +596,7 @@
 				buildSettings = {
 					BUNDLE_LOADER = "$(TEST_HOST)";
 					CODE_SIGN_STYLE = Automatic;
-					CURRENT_PROJECT_VERSION = 8;
+					CURRENT_PROJECT_VERSION = 11;
 					GENERATE_INFOPLIST_FILE = YES;
 					LD_RUNPATH_SEARCH_PATHS = (
 						"$(inherited)",
@@ -612,7 +616,7 @@
 				buildSettings = {
 					BUNDLE_LOADER = "$(TEST_HOST)";
 					CODE_SIGN_STYLE = Automatic;
-					CURRENT_PROJECT_VERSION = 8;
+					CURRENT_PROJECT_VERSION = 11;
 					GENERATE_INFOPLIST_FILE = YES;
 					LD_RUNPATH_SEARCH_PATHS = (
 						"$(inherited)",

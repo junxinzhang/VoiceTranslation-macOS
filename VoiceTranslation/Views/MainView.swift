@@ -23,6 +23,7 @@ struct MainView: View {
     @State private var editingEntry: TranslationEntryModel?
     @State private var originalDraft = ""
     @State private var editError = ""
+    @State private var rememberWordCorrection = false
     @State private var keyMonitor: Any?
 
 
@@ -85,7 +86,8 @@ struct MainView: View {
         .sheet(isPresented: $viewModel.showSettings) {
             SettingsView(
                 appSettings: appSettings,
-                translationService: translationService
+                translationService: translationService,
+                conversation: viewModel
             )
         }
         .sheet(isPresented: $viewModel.showHistory) {
@@ -109,6 +111,13 @@ struct MainView: View {
                     .font(.body)
                     .frame(minHeight: 150)
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
+                if let proposal = viewModel.correctionProposal(for: entry.id, text: originalDraft) {
+                    Toggle("记住人名或术语纠正：\(proposal.heard) → \(proposal.preferred)", isOn: $rememberWordCorrection)
+                    Text("下次优先参考正确写法；再次听到旧写法时提供建议，不会自行替换原文。")
+                        .font(.caption).foregroundColor(.secondary)
+                } else {
+                    Text("数字、币种和整句改写不会保存成纠错记忆。").font(.caption).foregroundColor(.secondary)
+                }
                 if !editError.isEmpty { Text(editError).foregroundColor(.red).font(.caption) }
                 HStack {
                     Text("仅修改这一段，其他内容继续识别和翻译。")
@@ -116,12 +125,13 @@ struct MainView: View {
                     Spacer()
                     Button("取消") { editingEntry = nil }.keyboardShortcut(.cancelAction)
                     Button("保存并更新译文") {
-                        if viewModel.updateOriginalText(entryID: entry.id, text: originalDraft) {
+                        let eligible = viewModel.correctionProposal(for: entry.id, text: originalDraft) != nil
+                        if viewModel.updateOriginalText(entryID: entry.id, text: originalDraft, rememberCorrection: rememberWordCorrection && eligible) {
                             editingEntry = nil
-                        } else { editError = "请填写有效原文（最多 4000 个字），或关闭后重新打开这一段。" }
+                        } else { editError = viewModel.vocabularyMessage.isEmpty ? "请填写有效原文（最多 4000 个字），或关闭后重新打开这一段。" : viewModel.vocabularyMessage }
                     }.buttonStyle(.borderedProminent)
                 }
-            }.padding(24).frame(width: 620, height: 380)
+            }.padding(24).frame(width: 620, height: 460)
         }
         .onChange(of: viewModel.showFloatingWindow) { show in
             if show {
@@ -295,6 +305,9 @@ struct MainView: View {
                     }
                     .font(.caption)
                 }
+                if viewModel.factReviewCount > 0 {
+                    Text("待核对 \(viewModel.factReviewCount) 段").font(.caption).foregroundColor(.orange)
+                }
                 // Status
                 if viewModel.speechRecognizer.isListening || viewModel.isTranslating {
                     HStack(spacing: 6) {
@@ -366,6 +379,7 @@ struct MainView: View {
                 if entry.canEditOriginal {
                     Button {
                         originalDraft = entry.originalText
+                        rememberWordCorrection = false
                         editError = ""
                         editingEntry = entry
                     } label: { Label("修改原文", systemImage: "square.and.pencil") }
@@ -376,6 +390,17 @@ struct MainView: View {
             }
 
             // Original text
+            if entry.containsCriticalFacts {
+                Text("含数字、日期或单位，请核对听写原文。")
+                    .font(.caption).foregroundColor(.orange)
+            }
+            if let suggested = viewModel.rememberedSuggestion(for: entry) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("纠错记忆建议：\(suggested)").font(.caption).foregroundColor(.secondary)
+                    Button("采用这次纠正并更新译文") { _ = viewModel.updateOriginalText(entryID: entry.id, text: suggested) }
+                        .buttonStyle(.borderless)
+                }
+            }
             if !entry.originalText.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
                     Text(entry.isError ? "" : "原:")

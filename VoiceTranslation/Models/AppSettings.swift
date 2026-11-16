@@ -110,6 +110,9 @@ class AppSettings: ObservableObject {
     @Published var useTranslationContext = true {
         didSet { saveToUserDefaults() }
     }
+    @Published var recognitionCorrections: [RecognitionCorrection] = [] {
+        didSet { saveToUserDefaults() }
+    }
 
     // MARK: - Private Properties
     
@@ -263,6 +266,10 @@ class AppSettings: ObservableObject {
            let terms = try? JSONDecoder().decode([GlossaryTerm].self, from: data) {
             translationGlossary = terms
         }
+        if let data = userDefaults.data(forKey: "recognitionCorrections"),
+           let corrections = try? JSONDecoder().decode([RecognitionCorrection].self, from: data) {
+            recognitionCorrections = Array(corrections.prefix(100))
+        }
         if userDefaults.object(forKey: "useTranslationContext") != nil {
             useTranslationContext = userDefaults.bool(forKey: "useTranslationContext")
         }
@@ -279,6 +286,9 @@ class AppSettings: ObservableObject {
 
         if let data = try? JSONEncoder().encode(translationGlossary) {
             userDefaults.set(data, forKey: "translationGlossary")
+        }
+        if let data = try? JSONEncoder().encode(recognitionCorrections) {
+            userDefaults.set(data, forKey: "recognitionCorrections")
         }
         userDefaults.set(useTranslationContext, forKey: "useTranslationContext")
         userDefaults.set(customAPIBaseURL, forKey: Constants.UserDefaults.customAPIBaseURL)
@@ -481,6 +491,7 @@ class AppSettings: ObservableObject {
     // MARK: - Reset Methods
     
     func resetToDefaults() {
+        recognitionCorrections = []
         translationGlossary = []
         useTranslationContext = true
         openAIApiKey = ""

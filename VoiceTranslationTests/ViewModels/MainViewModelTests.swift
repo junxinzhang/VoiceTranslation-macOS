@@ -911,7 +911,7 @@ final class TranslationRecoveryTests: XCTestCase {
             return .init(data: TranslationHTTPStub.translated("译文"))
         }
         speech.isRecording = true
-        speech.recognizedText = "First sentence. Second sentence."
+        speech.recognizedText = "Alpha sentence. Beta sentence."
         let ids = model.displayEntries.map(\.id)
         try await pause(1)
         XCTAssertEqual(requests, 3)
@@ -983,10 +983,11 @@ final class TranslationRecoveryTests: XCTestCase {
     func testContextContainsOnlyEarlierSuccessfulSameDirectionLines() async throws {
         let (model, speech, _, settings) = setupFlow()
         settings.translationGlossary = [GlossaryTerm(english: "RAG", chinese: "检索增强生成")]
-        TranslationHTTPStub.handler = { _ in .init(data: TranslationHTTPStub.translated("已完成的译文")) }
+        TranslationHTTPStub.handler = { _ in .init(data: TranslationHTTPStub.translated("检索增强生成是第一个主题。")) }
         speech.isRecording = true
         speech.finalizedText = "RAG is the first topic."
         try await pause()
+        TranslationHTTPStub.handler = { _ in .init(data: TranslationHTTPStub.translated("我们接下来会讨论它。")) }
         speech.recognizedText = "RAG is the first topic. We will discuss it next."
         speech.finalizedText = speech.recognizedText
         try await pause()
@@ -2504,5 +2505,174 @@ final class MicrophoneBufferRelayTests: XCTestCase {
         XCTAssertEqual(Array(delays.prefix(5)),[1,2,3,4,5])
         XCTAssertTrue(delays.dropFirst(5).allSatisfy { $0==15 })
         backoff.reset();XCTAssertEqual(backoff.nextDelay(),1)
+    }
+}
+
+@MainActor
+final class AccuracyAndVocabularyFlowTests: XCTestCase {
+    private var suites: [String] = []
+    private var directories: [URL] = []
+    override func tearDown() {
+        TranslationHTTPStub.handler = nil
+        for suite in suites { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+        for directory in directories { try? FileManager.default.removeItem(at: directory) }
+        super.tearDown()
+    }
+    private func settings() -> AppSettings {
+        let name = "voice-accuracy-\(UUID())"; suites.append(name)
+        let defaults = UserDefaults(suiteName: name)!
+        let settings = AppSettings(secureStore: IsolatedKeyStore(), defaults: defaults)
+        settings.selectedLanguageDirection = .englishToChinese
+        settings.customAPIKey = "test-accuracy-local-key"
+        settings.customAPIBaseURL = "https://accuracy.test/v1/chat/completions"
+        settings.apiProvider = .customAPI
+        settings.keepHistory = false
+        return settings
+    }
+    private func directory() -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("voice-accuracy-\(UUID())")
+        directories.append(url); return url
+    }
+    private func realService(_ settings: AppSettings) -> TranslationService {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [TranslationHTTPStub.self]
+        return TranslationService(appSettings: settings, session: URLSession(configuration: config))
+    }
+    func testInvalidCurrencyIsNeverPublishedAndOneCleanRetryCanSucceed() async {
+        let service = realService(settings()); var calls = 0; var published: [String] = []
+        TranslationHTTPStub.handler = { _ in
+            calls += 1
+            return .init(data: TranslationHTTPStub.translated(calls == 1 ? "预算是5000美元。" : "预算是5000。"))
+        }
+        let subscription = service.$translatedText.sink { published.append($0) }
+        service.context.recent = [.init(original: "Earlier budget was $3500.", translation: "之前预算为3500美元。")]
+        await service.translateText("The budget is 5000.", direction: .englishToChinese)
+        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(service.translatedText, "预算是5000。")
+        XCTAssertFalse(published.contains(where: { $0.contains("美元") }))
+        XCTAssertNil(service.error)
+        withExtendedLifetime(subscription) {}
+    }
+    func testTwoUnsafeRepliesAreHeldAndReopeningDoesNotRetryWithoutUserAction() async throws {
+        let settings = settings(); settings.keepHistory = true
+        let dir = directory(); let history = HistoryManager(conversationDirectory: dir)
+        let service = realService(settings); var calls = 0
+        TranslationHTTPStub.handler = { _ in calls += 1; return .init(data: TranslationHTTPStub.translated("预算是5000美元。")) }
+        let speech = MockSpeechRecognizer()
+        let model = MainViewModel(speechRecognizer: speech, translationService: service, historyManager: history, appSettings: settings)
+        speech.isRecording = true; speech.recognizedText = "The budget is 5000."
+        try await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(model.displayEntries.first?.translatedText, "")
+        XCTAssertEqual(model.factReviewCount, 1)
+        XCTAssertEqual(model.pendingTranslationCount, 0)
+        XCTAssertFalse(model.exportCurrentSession().contains("美元"))
+        XCTAssertTrue(model.exportCurrentSession().contains("待核对"))
+        XCTAssertEqual(history.activeConversation()?.lines.first?.requiresFactReview, true)
+        speech.isRecording = false
+        let reopened = MainViewModel(speechRecognizer: MockSpeechRecognizer(), translationService: realService(settings), historyManager: HistoryManager(conversationDirectory: dir), appSettings: settings)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(reopened.factReviewCount, 1)
+        XCTAssertEqual(reopened.displayEntries.first?.originalText, "The budget is 5000.")
+        withExtendedLifetime(model) {}
+    }
+    func testContextCannotFillAnIncompleteTimeOrTurnAListIntoAnAction() async {
+        let service = realService(settings()); var calls = 0
+        service.context.recent = [.init(original: "The meeting starts at nine.", translation: "会议九点开始。")]
+        TranslationHTTPStub.handler = { _ in calls += 1; return .init(data: TranslationHTTPStub.translated(calls == 1 ? "会议九点开始。" : "会议开始时间是")) }
+        await service.translateText("The meeting starts at", direction: .englishToChinese)
+        XCTAssertEqual(service.translatedText, "会议开始时间是"); XCTAssertEqual(calls, 2)
+        calls = 0
+        service.context = TranslationContext(terms: [.init(english: "Jensen Huang", chinese: "黄仁勋"), .init(english: "Project Aurora", chinese: "晨光计划")])
+        TranslationHTTPStub.handler = { _ in calls += 1; return .init(data: TranslationHTTPStub.translated(calls == 1 ? "黄仁勋推进晨光计划。" : "黄仁勋、晨光计划")) }
+        await service.translateText("Jensen Huang Project Aurora", direction: .englishToChinese)
+        XCTAssertEqual(service.translatedText, "黄仁勋、晨光计划"); XCTAssertEqual(calls, 2)
+    }
+    func testSessionNamesTakePrioritySurviveReopenAndClearOnlyForNewScene() throws {
+        let settings = settings(); settings.keepHistory = true
+        settings.translationGlossary = (0..<150).map { GlossaryTerm(english: "Common term \($0)", chinese: "通用词\($0)") }
+        settings.translationGlossary.insert(.init(english: "Project Aurora", chinese: "旧译名"), at: 0)
+        let speech = MockSpeechRecognizer(); let dir = directory(); let history = HistoryManager(conversationDirectory: dir)
+        let model = MainViewModel(speechRecognizer: speech, translationService: MockTranslationService(), historyManager: history, appSettings: settings)
+        XCTAssertTrue(model.saveSessionGlossary("Jensen Huang = 黄仁勋\nProject Aurora = 晨光计划"))
+        XCTAssertEqual(speech.recognitionHints.first, "Jensen Huang")
+        XCTAssertEqual(speech.recognitionHints.count, 100)
+        XCTAssertEqual(model.effectiveGlossary.first(where: { $0.english == "Project Aurora" })?.chinese, "晨光计划")
+        let saved = try XCTUnwrap(history.activeConversation())
+        XCTAssertTrue(saved.lines.isEmpty)
+        let reopened = MainViewModel(speechRecognizer: MockSpeechRecognizer(), translationService: MockTranslationService(), historyManager: HistoryManager(conversationDirectory: dir), appSettings: settings)
+        XCTAssertEqual(reopened.sessionGlossary.count, 2)
+        reopened.clearText()
+        XCTAssertTrue(reopened.sessionGlossary.isEmpty)
+        XCTAssertEqual(HistoryManager(conversationDirectory: dir).savedConversations.first(where: { $0.id == saved.id })?.sessionTerms?.count, 2)
+        XCTAssertFalse(settings.translationGlossary.isEmpty)
+        withExtendedLifetime(model) {}
+    }
+    func testRememberingIsExplicitSuggestsOnlyAndCannotOverrideManualEdits() async throws {
+        let settings = settings(); settings.keepHistory = true
+        let speech = MockSpeechRecognizer(); let dir = directory()
+        let history = HistoryManager(conversationDirectory: dir)
+        let model = MainViewModel(speechRecognizer: speech, translationService: MockTranslationService(), historyManager: history, appSettings: settings)
+        speech.isRecording = true; speech.recognizedText = "Jensen Hwang will join."
+        try await Task.sleep(nanoseconds: 180_000_000)
+        let id = try XCTUnwrap(model.displayEntries.first?.id)
+        XCTAssertTrue(settings.recognitionCorrections.isEmpty)
+        XCTAssertTrue(model.updateOriginalText(entryID: id, text: "Jensen Huang will join.", rememberCorrection: true))
+        XCTAssertEqual(settings.recognitionCorrections.first?.preferred, "Jensen Huang")
+        XCTAssertTrue(speech.recognitionHints.contains("Jensen Huang"))
+        XCTAssertTrue(model.saveSessionGlossary("Jensen Huang = 黄仁勋"))
+        speech.recognizedText = "Jensen Hwang will join. We will meet tomorrow."
+        try await Task.sleep(nanoseconds: 250_000_000)
+        XCTAssertEqual(model.displayEntries.first(where: { $0.id == id })?.originalText, "Jensen Huang will join.")
+        XCTAssertTrue(model.displayEntries.first(where: { $0.id == id })?.isManuallyEdited ?? false)
+        XCTAssertEqual(settings.recognitionCorrections.first?.suggestion(for: "Jensen Hwang returns.", language: "en-US"), "Jensen Huang returns.")
+        speech.isRecording = false; model.checkpointConversation()
+        let reopened = MainViewModel(speechRecognizer: MockSpeechRecognizer(), translationService: MockTranslationService(), historyManager: HistoryManager(conversationDirectory: dir), appSettings: settings)
+        XCTAssertEqual(reopened.displayEntries.first(where: { $0.id == id })?.originalText, "Jensen Huang will join.")
+        XCTAssertTrue(reopened.displayEntries.first(where: { $0.id == id })?.isManuallyEdited ?? false)
+    }
+    func testEditingNumbersDoesNotCreateAReusableCorrectionRule() async throws {
+        let settings = settings(); let speech = MockSpeechRecognizer()
+        let model = MainViewModel(speechRecognizer: speech, translationService: MockTranslationService(), historyManager: HistoryManager(), appSettings: settings)
+        speech.isRecording = true; speech.recognizedText = "The quantity is 15."
+        try await Task.sleep(nanoseconds: 150_000_000)
+        let id = try XCTUnwrap(model.displayEntries.first?.id)
+        XCTAssertFalse(model.updateOriginalText(entryID: id, text: "The quantity is 50.", rememberCorrection: true))
+        XCTAssertTrue(model.updateOriginalText(entryID: id, text: "The quantity is 50."))
+        XCTAssertTrue(settings.recognitionCorrections.isEmpty)
+        speech.recognizedText = "The quantity is 15. The next quantity is 15."
+        try await Task.sleep(nanoseconds: 220_000_000)
+        XCTAssertEqual(model.displayEntries.first(where: { $0.id == id })?.originalText, "The quantity is 50.")
+        XCTAssertTrue(settings.recognitionCorrections.isEmpty)
+    }
+}
+
+extension AccuracyAndVocabularyFlowTests {
+    func testExplicitWordMemoryReloadsButAnOrdinaryEditDoesNotRemember() async throws {
+        let settings = settings(); let speech = MockSpeechRecognizer()
+        let model = MainViewModel(speechRecognizer: speech, translationService: MockTranslationService(), historyManager: HistoryManager(), appSettings: settings)
+        speech.isRecording = true; speech.recognizedText = "Jensen Hwang will join."
+        try await Task.sleep(nanoseconds: 150_000_000)
+        let id = try XCTUnwrap(model.displayEntries.first?.id)
+        XCTAssertTrue(model.updateOriginalText(entryID: id, text: "Jensen Huang will join."))
+        XCTAssertTrue(settings.recognitionCorrections.isEmpty)
+        XCTAssertTrue(model.updateOriginalText(entryID: id, text: "Jensen Hwang will join."))
+        XCTAssertTrue(model.updateOriginalText(entryID: id, text: "Jensen Huang will join.", rememberCorrection: true))
+        let reloaded = AppSettings(secureStore: IsolatedKeyStore(), defaults: UserDefaults(suiteName: suites.last!)!)
+        XCTAssertEqual(reloaded.recognitionCorrections.first?.heard, "Jensen Hwang")
+        XCTAssertEqual(reloaded.recognitionCorrections.first?.preferred, "Jensen Huang")
+        XCTAssertEqual(reloaded.recognitionCorrections.first?.language, "en-US")
+    }
+    func testClearedNamesOnlySceneDoesNotResurrectAfterRestart() {
+        let settings = settings(); settings.keepHistory = true
+        let dir = directory()
+        let model = MainViewModel(speechRecognizer: MockSpeechRecognizer(), translationService: MockTranslationService(), historyManager: HistoryManager(conversationDirectory: dir), appSettings: settings)
+        XCTAssertTrue(model.saveSessionGlossary("Jensen Huang = 黄仁勋"))
+        XCTAssertNotNil(HistoryManager(conversationDirectory: dir).activeConversation())
+        XCTAssertTrue(model.saveSessionGlossary(""))
+        XCTAssertNil(HistoryManager(conversationDirectory: dir).activeConversation())
+        let reopened = MainViewModel(speechRecognizer: MockSpeechRecognizer(), translationService: MockTranslationService(), historyManager: HistoryManager(conversationDirectory: dir), appSettings: settings)
+        XCTAssertTrue(reopened.sessionGlossary.isEmpty)
     }
 }

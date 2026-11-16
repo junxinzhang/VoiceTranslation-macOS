@@ -18,6 +18,51 @@ struct GlossaryTerm: Codable, Equatable {
     }
 }
 
+/// Explicitly saved word corrections. They bias recognition and offer suggestions;
+/// they never silently rewrite a transcript or an authoritative human edit.
+struct RecognitionCorrection: Codable, Equatable, Identifiable {
+    var id = UUID()
+    var heard: String
+    var preferred: String
+    var language: String
+
+    static func proposal(before: String, after: String, language: String) -> RecognitionCorrection? {
+        func words(_ text: String) -> [String] {
+            let regex = try! NSRegularExpression(pattern: #"[\p{L}\p{N}]+(?:[-'’][\p{L}\p{N}]+)*"#)
+            return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { Range($0.range, in: text).map { String(text[$0]) } }
+        }
+        let a = language.hasPrefix("zh") ? before.map(String.init) : words(before)
+        let b = language.hasPrefix("zh") ? after.map(String.init) : words(after)
+        var prefix = 0, suffix = 0
+        while prefix < min(a.count, b.count), a[prefix].lowercased() == b[prefix].lowercased() { prefix += 1 }
+        while suffix < min(a.count, b.count) - prefix, a[a.count - suffix - 1].lowercased() == b[b.count - suffix - 1].lowercased() { suffix += 1 }
+        guard prefix < a.count - suffix, prefix < b.count - suffix else { return nil }
+        if language.hasPrefix("zh") { prefix = max(0, prefix - 2) }
+        // Retain an adjacent capitalized first name when only the surname changed.
+        if prefix > 0, a[prefix - 1].first?.isUppercase == true, a[prefix - 1].count > 1,
+           !["The", "We", "My", "This", "That", "Our"].contains(a[prefix - 1]) { prefix -= 1 }
+        let old = Array(a[prefix..<(a.count - suffix)]), new = Array(b[prefix..<(b.count - suffix)])
+        guard old.count <= 4, new.count <= 4 else { return nil }
+        let separator = language.hasPrefix("zh") ? "" : " "
+        let heard = old.joined(separator: separator), preferred = new.joined(separator: separator)
+        guard heard.count <= 80, preferred.count <= 80,
+              !TranslationIntegrity.containsFacts(heard), !TranslationIntegrity.containsFacts(preferred),
+              TranslationIntegrity.facts("1 " + heard).numbers.first?.unit == nil,
+              TranslationIntegrity.facts("1 " + preferred).numbers.first?.unit == nil else { return nil }
+        return RecognitionCorrection(heard: heard, preferred: preferred, language: language)
+    }
+
+    func suggestion(for text: String, language: String) -> String? {
+        guard self.language == language else { return nil }
+        let pattern = language.hasPrefix("zh") ? NSRegularExpression.escapedPattern(for: heard)
+            : "(?<![\\p{L}\\p{N}_])" + NSRegularExpression.escapedPattern(for: heard) + "(?![\\p{L}\\p{N}_])"
+        guard let range = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        var result = text
+        result.replaceSubrange(range, with: preferred)
+        return result == text ? nil : result
+    }
+}
+
 enum Glossary {
     struct InvalidLine: LocalizedError {
         let message: String

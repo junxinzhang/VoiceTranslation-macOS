@@ -60,6 +60,7 @@ struct TranslationSession: Codable {
     var failureMessage: String?
     var statusMessage = ""
     var manualOriginal: String?
+    var requiresFactReview: Bool?
     let createdAt: Date
     
     // Shared formatter — avoids creating DateFormatter per session
@@ -119,6 +120,43 @@ class MainViewModel: ObservableObject {
     private var isRestoringConversation = false
     private var lastSavedConversationData: Data?
     @Published var restoredConversationMessage = ""
+    @Published var sessionGlossary: [GlossaryTerm] = [] {
+        didSet { refreshRecognitionVocabulary(); checkpointConversation() }
+    }
+    @Published var vocabularyMessage = ""
+
+    var effectiveGlossary: [GlossaryTerm] {
+        var seen = Set<String>()
+        return (sessionGlossary + appSettings.translationGlossary).filter { seen.insert($0.english.lowercased()).inserted }
+    }
+
+    @discardableResult
+    func saveSessionGlossary(_ text: String) -> Bool {
+        do {
+            sessionGlossary = try Glossary.parse(text)
+            if appSettings.keepHistory, !historyManager.saveError.isEmpty { vocabularyMessage = historyManager.saveError; return false }
+            vocabularyMessage = "已保存本场名单，新场次会重新开始。"
+            return true
+        }
+        catch { vocabularyMessage = error.localizedDescription; return false }
+    }
+
+    private func refreshRecognitionVocabulary(global: [GlossaryTerm]? = nil, corrections: [RecognitionCorrection]? = nil, direction: LanguageDirection? = nil) {
+        let direction = direction ?? appSettings.selectedLanguageDirection
+        let memories = (corrections ?? appSettings.recognitionCorrections).filter { $0.language == direction.speechLocale }
+        let preferred = memories.reversed().map { GlossaryTerm(english: $0.preferred, chinese: $0.preferred) }
+        speechRecognizer.setRecognitionGlossary(sessionGlossary + preferred + (global ?? appSettings.translationGlossary), direction: direction)
+        transcript.protectedPhrases = speechRecognizer.recognitionHints
+    }
+
+    func rememberedSuggestion(for entry: TranslationEntryModel) -> String? {
+        guard !entry.isManuallyEdited, let row = translationQueue.first(where: { $0.id == entry.id }) else { return nil }
+        return appSettings.recognitionCorrections.reversed().compactMap { $0.suggestion(for: row.originalText, language: row.direction.speechLocale) }.first
+    }
+    func correctionProposal(for id: UUID, text: String) -> RecognitionCorrection? {
+        guard let row = translationQueue.first(where: { $0.id == id }) else { return nil }
+        return RecognitionCorrection.proposal(before: row.originalText, after: text, language: row.direction.speechLocale)
+    }
     private let retryDelays: [TimeInterval]
     private var transcript = LiveTranscript()
     private var automaticSessionIDs = Set<UUID>()
@@ -205,11 +243,9 @@ class MainViewModel: ObservableObject {
             self?.applyHistoryDeletion(deletion)
         }.store(in: &cancellables)
 
-        appSettings.$translationGlossary.combineLatest(appSettings.$selectedLanguageDirection)
-            .sink { [weak self] terms, direction in
-                guard let self else { return }
-                self.speechRecognizer.setRecognitionGlossary(terms, direction: direction)
-                self.transcript.protectedPhrases = self.speechRecognizer.recognitionHints
+        appSettings.$translationGlossary.combineLatest(appSettings.$recognitionCorrections, appSettings.$selectedLanguageDirection)
+            .sink { [weak self] terms, corrections, direction in
+                self?.refreshRecognitionVocabulary(global: terms, corrections: corrections, direction: direction)
             }.store(in: &cancellables)
 
         speechRecognizer.$recognizedText
@@ -226,6 +262,7 @@ class MainViewModel: ObservableObject {
                 guard let self else { return }
                 self.flushTranscript()
                 self.transcript = LiveTranscript()
+                self.transcript.protectedPhrases = self.speechRecognizer.recognitionHints
             }
             .store(in: &cancellables)
 
@@ -356,13 +393,14 @@ class MainViewModel: ObservableObject {
     func clearText() {
         flushTranscript()
         checkpointConversation()
-        guard !appSettings.keepHistory || (translationQueue.isEmpty && transcript.pendingText.isEmpty) || historyManager.saveError.isEmpty else { return }
+        guard !appSettings.keepHistory || (translationQueue.isEmpty && transcript.pendingText.isEmpty && sessionGlossary.isEmpty) || historyManager.saveError.isEmpty else { return }
         historyManager.finishActiveConversation()
         resetCurrentConversation()
     }
 
     private func resetCurrentConversation() {
         isRestoringConversation = true
+        sessionGlossary = []
         conversationID = UUID()
         conversationStartedAt = Date()
         lastSavedConversationData = nil
@@ -418,6 +456,7 @@ class MainViewModel: ObservableObject {
                 guard translationQueue[index].manualOriginal == nil,
                       translationQueue[index].originalText != line.text else { continue }
                 translationQueue[index].originalText = line.text
+                translationQueue[index].requiresFactReview = nil
                 translationQueue[index].isCompleted = false
                 translationQueue[index].retryCount = 0
                 translationQueue[index].retryAt = nil
@@ -446,10 +485,23 @@ class MainViewModel: ObservableObject {
     
     /// Human edits are authoritative for this row, including later ASR revisions and restarts.
     @discardableResult
-    func updateOriginalText(entryID: UUID, text: String) -> Bool {
+    func updateOriginalText(entryID: UUID, text: String, rememberCorrection: Bool = false) -> Bool {
         let corrected = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard LiveTranscript.isMeaningful(corrected), corrected.count <= 4000,
-              let index = translationQueue.firstIndex(where: { $0.id == entryID }) else { return false }
+              let index = translationQueue.firstIndex(where: { $0.id == entryID }) else {
+            vocabularyMessage = "请填写有效原文（最多4000个字），或关闭后重新打开这一段。"
+            return false
+        }
+        var memory: RecognitionCorrection?
+        if rememberCorrection {
+            guard let candidate = RecognitionCorrection.proposal(before: translationQueue[index].originalText, after: corrected, language: translationQueue[index].direction.speechLocale) else {
+                vocabularyMessage = "只记住简短的人名或专业词，不保存数字、币种或整句改写规则。"; return false
+            }
+            guard appSettings.recognitionCorrections.count < 100 || appSettings.recognitionCorrections.contains(where: { $0.heard.lowercased() == candidate.heard.lowercased() && $0.language == candidate.language }) else {
+                vocabularyMessage = "最多保存100条纠错记忆，请先在设置中忘记不再需要的词。"; return false
+            }
+            memory = candidate
+        }
         if currentSessionId == entryID {
             translationTask?.cancel()
             translationTask = nil
@@ -473,9 +525,16 @@ class MainViewModel: ObservableObject {
         translationQueue[index].translatedText = ""
         translationQueue[index].isCompleted = false
         translationQueue[index].failureMessage = nil
+        translationQueue[index].requiresFactReview = nil
         translationQueue[index].retryCount = 0
         translationQueue[index].retryAt = nil
         translationQueue[index].statusMessage = "原文已修改，正在重新翻译..."
+        if let memory {
+            var memories = appSettings.recognitionCorrections
+            memories.removeAll { $0.language == memory.language && $0.heard.lowercased() == memory.heard.lowercased() }
+            memories.append(memory)
+            appSettings.recognitionCorrections = memories
+        }
         pendingSentenceQueue.removeAll { $0 == entryID }
         pendingSentenceQueue.insert(entryID, at: 0)
         rebuildAccumulatedDisplay()
@@ -531,7 +590,8 @@ class MainViewModel: ObservableObject {
             }
 
             exportText += "原文: \(entry.originalText)\n"
-            exportText += "译文: \(entry.translatedText.isEmpty ? "翻译中..." : entry.translatedText)\n\n"
+            let output = entry.translatedText.isEmpty ? (entry.statusMessage.hasPrefix("待核对") ? entry.statusMessage : "翻译中...") : entry.translatedText
+            exportText += "译文: \(output)\n\n"
         }
 
         return exportText
@@ -612,13 +672,15 @@ class MainViewModel: ObservableObject {
     }
 
     private func rebuildAccumulatedDisplay() {
+        let previous = Dictionary(uniqueKeysWithValues: displayEntries.map { ($0.id, $0) })
         var entries = translationQueue.filter { LiveTranscript.isMeaningful($0.originalText) }
             .sorted { $0.createdAt < $1.createdAt }.map { session in
                 TranslationEntryModel(id: session.id, originalText: session.originalText,
                     translatedText: session.translatedText, timestamp: session.timestamp,
-                    createdAt: session.createdAt, isLive: !session.isCompleted,
+                    createdAt: session.createdAt, isLive: !session.isCompleted && session.requiresFactReview != true,
                     statusMessage: session.statusMessage, canEditOriginal: true,
-                    isManuallyEdited: session.manualOriginal != nil)
+                    isManuallyEdited: session.manualOriginal != nil,
+                    containsCriticalFacts: previous[session.id].flatMap { $0.originalText == session.originalText ? $0.containsCriticalFacts : nil })
             }
         if currentSessionId == nil, !transcript.pendingText.isEmpty {
             entries.append(TranslationEntryModel(originalText: transcript.pendingText,
@@ -755,6 +817,12 @@ class MainViewModel: ObservableObject {
     private func recordTranslationFailure(at index: Int, service: TranslationService) {
         translationQueue[index].translatedText = ""
         translationQueue[index].failureMessage = service.error?.localizedDescription ?? "翻译回复未完成。"
+        if case .factsNeedReview(let message)? = service.error {
+            translationQueue[index].requiresFactReview = true
+            translationQueue[index].retryAt = nil
+            translationQueue[index].statusMessage = "待核对：\(message)。请核对或修改原文后补译。"
+            return
+        }
         let attempt = translationQueue[index].retryCount
         if service.shouldRetryFailure && attempt < retryDelays.count {
             let delay = max(retryDelays[attempt], service.retryAfter ?? 0)
@@ -772,7 +840,8 @@ class MainViewModel: ObservableObject {
         }
     }
 
-    var pendingTranslationCount: Int { translationQueue.filter { !$0.isCompleted }.count }
+    var pendingTranslationCount: Int { translationQueue.filter { !$0.isCompleted && $0.requiresFactReview != true }.count }
+    var factReviewCount: Int { translationQueue.filter { $0.requiresFactReview == true }.count }
     var isTranslating: Bool { currentSessionId != nil || secondarySessionID != nil }
 
     private func startTranslationSession(for sessionId: UUID, sentence: String, source: String) {
@@ -820,6 +889,7 @@ class MainViewModel: ObservableObject {
 
     func retryFailedTranslations() {
         for i in translationQueue.indices where translationQueue[i].failureMessage != nil {
+            translationQueue[i].requiresFactReview = nil
             translationQueue[i].retryCount = 0
             translationQueue[i].retryAt = Date()
             translationQueue[i].statusMessage = "等待补译..."
@@ -858,7 +928,7 @@ class MainViewModel: ObservableObject {
                 if recent.count == 6 { break }
             }
         }
-        return TranslationContext(recent: recent, terms: appSettings.translationGlossary)
+        return TranslationContext(recent: recent, terms: effectiveGlossary)
     }
 
     private func saveSessionToHistoryIfNeeded(_ session: TranslationSession) {
@@ -919,6 +989,7 @@ class MainViewModel: ObservableObject {
         var saved = SavedConversation(id: conversationID, startedAt: conversationStartedAt,
             updatedAt: conversationStartedAt, lines: lines, draft: transcript.pendingText,
             draftDirection: appSettings.selectedLanguageDirection)
+        saved.sessionTerms = sessionGlossary
         guard let data = try? JSONEncoder().encode(saved), data != lastSavedConversationData else { return }
         saved.updatedAt = Date()
         historyManager.saveConversation(saved)
@@ -928,13 +999,14 @@ class MainViewModel: ObservableObject {
     func restoreConversation(_ saved: SavedConversation) {
         guard !historyManager.isConversationDeleted(saved.id), !speechRecognizer.isRecording else { return }
         checkpointConversation()
-        guard !appSettings.keepHistory || (translationQueue.isEmpty && transcript.pendingText.isEmpty) || historyManager.saveError.isEmpty else { return }
+        guard !appSettings.keepHistory || (translationQueue.isEmpty && transcript.pendingText.isEmpty && sessionGlossary.isEmpty) || historyManager.saveError.isEmpty else { return }
         cancelSecondaryTranslation()
         translationPauseUntil = nil
         translationTask?.cancel()
         translationService.clearTranslation()
         transcriptEpoch = UUID()
         isRestoringConversation = true
+        sessionGlossary = saved.sessionTerms ?? []
         appSettings.selectedLanguageDirection = saved.draftDirection
         conversationID = saved.id
         conversationStartedAt = saved.startedAt
@@ -954,6 +1026,7 @@ class MainViewModel: ObservableObject {
         pendingSentenceQueue = []
         for i in translationQueue.indices where !translationQueue[i].isCompleted {
             translationQueue[i].translatedText = ""
+            if translationQueue[i].requiresFactReview == true { continue }
             translationQueue[i].failureMessage = nil
             translationQueue[i].retryCount = 0
             translationQueue[i].retryAt = nil

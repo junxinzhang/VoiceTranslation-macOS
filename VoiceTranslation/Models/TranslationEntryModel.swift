@@ -20,6 +20,7 @@ struct TranslationEntryModel: Identifiable, Equatable {
     var isError: Bool
     var canEditOriginal: Bool
     var isManuallyEdited: Bool
+    var containsCriticalFacts: Bool
 
     // Shared DateFormatter (expensive to create; reuse)
     private static let timestampFormatter: DateFormatter = {
@@ -38,7 +39,8 @@ struct TranslationEntryModel: Identifiable, Equatable {
         isError: Bool = false,
         statusMessage: String = "",
         canEditOriginal: Bool = false,
-        isManuallyEdited: Bool = false
+        isManuallyEdited: Bool = false,
+        containsCriticalFacts: Bool? = nil
     ) {
         self.id = id
         self.originalText = originalText
@@ -50,6 +52,7 @@ struct TranslationEntryModel: Identifiable, Equatable {
         self.statusMessage = statusMessage
         self.canEditOriginal = canEditOriginal
         self.isManuallyEdited = isManuallyEdited
+        self.containsCriticalFacts = containsCriticalFacts ?? TranslationIntegrity.containsFacts(originalText)
     }
 
     /// Create an error entry
